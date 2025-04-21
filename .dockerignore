@@ -1,0 +1,15 @@
+# .dockerignore
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.idea/
+frontend/
+elan_annotations/
+
+*.log
+# Add any large data directories you don't need copied
+# e.g., raw_data/
