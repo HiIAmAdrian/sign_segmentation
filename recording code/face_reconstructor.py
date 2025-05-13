@@ -7,7 +7,7 @@ import os
 import glob
 
 # --- Configuration ---
-CSV_FILE_PATTERN = "output_data/sentence_*_dlib_landmarks_cpp.csv" # Adjust if your CSV filenames differ
+CSV_FILE_PATTERN = "output_data/sentence_*_dlib_landmarks_cpp.csv"  # Adjust if your CSV filenames differ
 OUTPUT_VIDEO_FILENAME = "output_data/face_reconstruction_video.mp4"
 FPS = 15 # Frame rate for the output video (adjust as needed)
 PLOT_POINT_SIZE = 5

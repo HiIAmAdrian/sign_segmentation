@@ -230,7 +230,7 @@ static const int num_biomech_indices_to_log = sizeof(biomech_indices_to_log) / s
 // --- Internal Teslasuit Status Code Check ---
 static void check_ts_error_internal(TsStatusCode status_code, const char* context_msg) {
     if (status_code != 0) { // 0 (Good) is success for Teslasuit
-        fprintf(stderr, "Teslasuit API Error in %s: %s (Code: %d)\n",
+        fprintf(stderr, "-----Teslasuit API Error in %s: %s (Code: %d)\n",
                 context_msg,
                 ts_get_status_code_message(status_code),
                 status_code);
@@ -249,7 +249,7 @@ void check_ts_error_public(TsStatusCode status_code, const char* context_msg) {
 
 bool ts_calibrate_device(TsDeviceHandle* device_handle, const char* device_name_for_log) {
     if (!device_handle) {
-        printf("Cannot calibrate %s: device handle is NULL.\n", device_name_for_log);
+        printf("------------Cannot calibrate %s: device handle is NULL.\n", device_name_for_log);
         return false;
     }
 
@@ -259,7 +259,7 @@ bool ts_calibrate_device(TsDeviceHandle* device_handle, const char* device_name_
     // A more robust way would be to check if streaming is active and start it if not,
     // but that adds complexity here. For now, let's assume the user starts streaming first.
     printf("Attempting to calibrate %s...\n", device_name_for_log);
-    printf("Ensure user is in the required calibration pose (e.g., T-Pose).\n");
+    printf("Ensure user is in the required calibration pose (e.g., I-Pose).\n");
 
     // Add a small delay or prompt for user to get into pose
     printf("Calibration will start in 3 seconds...\n");
@@ -475,7 +475,7 @@ void ts_discover_and_open_devices() {
         }
     }
     if (!s_ts_suit_handle && !s_ts_glove_left_handle && !s_ts_glove_right_handle) {
-        printf("Warning: No Teslasuit devices (Suit or Gloves) were assigned for Mocap recording.\n");
+        printf("-------Warning: No Teslasuit devices (Suit or Gloves) were assigned for Mocap recording.\n");
     }
 }
 
@@ -518,7 +518,7 @@ bool ts_start_mocap_recording(int sentence_id, const char* output_dir) {
             fprintf(s_ts_suit_csv_file, "sentence_id,frame_id,frame_timestamp_us");
             for (int i = 0; i < num_suit_bones_to_log; ++i) {
                 const char* bone_name = ts_bone_index_to_name_str(suit_bone_order[i]);
-                fprintf(s_ts_suit_csv_file, ",%s.pos.x,%s.pos.y,%s.pos.z,%s.rot.w,%s.rot.x,%s.rot.y,%s.rot.z",
+                fprintf(s_ts_suit_csv_file, ",%s.position.x,%s.position.y,%s.position.z,%s.rotation.w,%s.rotation.x,%s.rotation.y,%s.rotation.z",
                         bone_name, bone_name, bone_name, bone_name, bone_name, bone_name, bone_name);
             }
             fprintf(s_ts_suit_csv_file, ",mass_center.x,mass_center.y,mass_center.z");
@@ -537,7 +537,7 @@ bool ts_start_mocap_recording(int sentence_id, const char* output_dir) {
              fprintf(s_ts_glove_left_csv_file, "sentence_id,frame_id,frame_timestamp_us");
              for (int i = 0; i < num_left_glove_bones_to_log; ++i) {
                 const char* bone_name = ts_bone_index_to_name_str(left_glove_bone_order[i]);
-                 fprintf(s_ts_glove_left_csv_file, ",%s.pos.x,%s.pos.y,%s.pos.z,%s.rot.w,%s.rot.x,%s.rot.y,%s.rot.z",
+                 fprintf(s_ts_glove_left_csv_file, ",%s.position.x,%s.position.y,%s.position.z,%s.rotation.w,%s.rotation.x,%s.rotation.y,%s.rotation.z",
                          bone_name, bone_name, bone_name, bone_name, bone_name, bone_name, bone_name);
              }
              fprintf(s_ts_glove_left_csv_file, "\n");
@@ -551,7 +551,7 @@ bool ts_start_mocap_recording(int sentence_id, const char* output_dir) {
             fprintf(s_ts_glove_right_csv_file, "sentence_id,frame_id,frame_timestamp_us");
             for (int i = 0; i < num_right_glove_bones_to_log; ++i) {
                 const char* bone_name = ts_bone_index_to_name_str(right_glove_bone_order[i]);
-                fprintf(s_ts_glove_right_csv_file, ",%s.pos.x,%s.pos.y,%s.pos.z,%s.rot.w,%s.rot.x,%s.rot.y,%s.rot.z",
+                fprintf(s_ts_glove_right_csv_file, ",%s.position.x,%s.position.y,%s.position.z,%s.rotation.w,%s.rotation.x,%s.rotation.y,%s.rotation.z",
                         bone_name, bone_name, bone_name, bone_name, bone_name, bone_name, bone_name);
             }
             fprintf(s_ts_glove_right_csv_file, "\n");
