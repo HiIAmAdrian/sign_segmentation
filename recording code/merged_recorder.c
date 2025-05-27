@@ -2,11 +2,8 @@
 #include <librealsense2/h/rs_pipeline.h>
 #include <librealsense2/h/rs_frame.h>
 #include <librealsense2/h/rs_config.h>
-// #include <librealsense2/h/rs_record_playback.h> // Not strictly needed by this main recorder
-// #include <librealsense2/h/rs_sensor.h>       // Not strictly needed by this main recorder
 
-// #include "face_detector.h"   // Dlib/RS processing - NOT CALLED BY THIS MAIN RECORDER
-#include "teslasuit_handler.h"  // Interface for Teslasuit
+#include "teslasuit_handler.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,7 +69,7 @@ int main(int argc, char* argv[]) {
     }
     const char* output_dir_base = argv[1];
     int start_sentence_num = 1;
-    if (argc > 2) { // Changed to argc > 2 for start_sentence_num
+    if (argc > 2) {
         start_sentence_num = atoi(argv[2]);
         if (start_sentence_num < 1) {
             fprintf(stderr, "\033[33mWarning: Invalid start_sentence_num '%s', defaulting to 1.\033[0m\n", argv[2]);
@@ -93,7 +90,7 @@ int main(int argc, char* argv[]) {
 
     rs2_error* e = NULL;
     rs2_context* rec_ctx = rs2_create_context(RS2_API_VERSION, &e);
-    if (e) { // Check error immediately after creation
+    if (e) {
         fprintf(stderr, "\033[31mmain: ---------------RealSense error creating context: %s\033[0m\n", rs2_get_error_message(e));
         rs2_free_error(e);
         ts_close_all_devices();
@@ -119,7 +116,7 @@ int main(int argc, char* argv[]) {
             printf("\r\033[32mRECORDING Sentence %03d...\033[0m Press [ENTER] to STOP. ", sentence_count);
             fflush(stdout);
             if (rs_rec_pipeline) {
-                rs2_frame* frames = rs2_pipeline_wait_for_frames(rs_rec_pipeline, 1000, &e);
+                rs2_frame* frames = rs2_pipeline_wait_for_frames(rs_rec_pipeline, 1500, &e);
                 if (frames) {
                     rs2_release_frame(frames);
                 } else if (e) {
@@ -139,11 +136,11 @@ int main(int argc, char* argv[]) {
 
         if (_kbhit()) {
             char key = _getch();
-            printf("\r%*s\r", 120, ""); // Clear the line more reliably
+            printf("\r%*s\r", 120, "");
 
             if (!is_recording && (key == 'q' || key == 'Q')) {
                 app_should_run = 0; printf("Quit command received.\n"); break;
-            } else if (key == '\r' || key == '\n') { // Enter key
+            } else if (key == '\r' || key == '\n') {
                 if (!is_recording) {
                     // --- Start ALL Recordings ---
                     printf("Starting ALL recordings for sentence %03d...\n", sentence_count);
@@ -163,15 +160,15 @@ int main(int argc, char* argv[]) {
                     printf("  DEBUG: RealSense recording to: %s\n", rs_bag_filename);
                     rs2_config_enable_record_to_file(rs_rec_config, rs_bag_filename, &e); check_rs_error(e, "main: rs_rec_to_file");
 
-                    rs2_config_enable_stream(rs_rec_config, RS2_STREAM_DEPTH, -1, 840, 480, RS2_FORMAT_Z16, 60, &e);
+                    rs2_config_enable_stream(rs_rec_config, RS2_STREAM_DEPTH, -1, 848, 480, RS2_FORMAT_Z16, 60, &e);
                     if(e) {fprintf(stderr, "\033[33m---------Warn: RS depth cfg: %s\033[0m\n", rs2_get_error_message(e)); rs2_free_error(e);e=NULL;}
-                    rs2_config_enable_stream(rs_rec_config, RS2_STREAM_COLOR, -1, 840, 480, RS2_FORMAT_RGB8, 60, &e);
+                    rs2_config_enable_stream(rs_rec_config, RS2_STREAM_COLOR, -1, 848, 480, RS2_FORMAT_RGB8, 60, &e);
                     if(e) {
                         fprintf(stderr, "\033[33m------------Warn: RS BGR8 cfg: %s. Try RGB8.\033[0m\n", rs2_get_error_message(e)); rs2_free_error(e);e=NULL;
-                        rs2_config_enable_stream(rs_rec_config, RS2_STREAM_COLOR, -1, 840, 480, RS2_FORMAT_BGR8, 60, &e);
+                        rs2_config_enable_stream(rs_rec_config, RS2_STREAM_COLOR, -1, 848, 480, RS2_FORMAT_BGR8, 60, &e);
                          if(e) {
                              fprintf(stderr, "\033[33m-----------Warn: RS RGB8 cfg: %s. Try ANY.\033[0m\n", rs2_get_error_message(e)); rs2_free_error(e);e=NULL;
-                             rs2_config_enable_stream(rs_rec_config, RS2_STREAM_COLOR, -1, 840, 480, RS2_FORMAT_ANY, 60, &e);
+                             rs2_config_enable_stream(rs_rec_config, RS2_STREAM_COLOR, -1, 848, 480, RS2_FORMAT_ANY, 60, &e);
                              if(e) {fprintf(stderr, "\033[31m------------FATAL: RS ANY color cfg: %s\033[0m\n", rs2_get_error_message(e)); rs2_free_error(e);e=NULL;}
                          }
                     }
@@ -228,7 +225,6 @@ int main(int argc, char* argv[]) {
                     char ts_lglove_file[MAX_FILENAME_LEN];
                     char ts_rglove_file[MAX_FILENAME_LEN];
                     char rs_bag_prev[MAX_FILENAME_LEN];
-                    // Landmark CSV deletion is not needed here as it's a post-process step
 
                     // Corrected and safer filename construction
                     sprintf(ts_suit_file, "%s/sentence_%03d_ts_suit_mocap.csv", output_dir_base, prev_sentence_to_delete);
@@ -258,7 +254,8 @@ int main(int argc, char* argv[]) {
                     if (left_ok || right_ok) printf("Glove calibration commands sent.\n");
                     else printf("---------------No gloves available or calibration failed to send.\n");
                 }
-            }}
+            }
+        }
         Sleep(50);
     }
 
