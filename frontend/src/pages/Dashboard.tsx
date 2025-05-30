@@ -1,4 +1,4 @@
-
+// Dashboard.tsx
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,11 +6,9 @@ import { processFiles, SegmentResponse } from '../services/apiService';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
-import { Upload, Video, RefreshCcw, FileVideo, Play, Pause } from 'lucide-react';
+import { Upload, Video, RefreshCcw, FileVideo, Play, Pause, Archive } from 'lucide-react'; // Added Archive
 import FileUploader from '../components/FileUploader';
 import VideoPlayer from '../components/VideoPlayer';
-
-// ... keep existing code (Dashboard) the same except VideoPlayer usage
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -20,8 +18,10 @@ const Dashboard = () => {
   const [suitFile, setSuitFile] = useState<File | null>(null);
   const [gloveRightFile, setGloveRightFile] = useState<File | null>(null);
   const [gloveLeftFile, setGloveLeftFile] = useState<File | null>(null);
-  const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [bagFile, setBagFile] = useState<File | null>(null); // New state for BAG file
+  const [videoFile, setVideoFile] = useState<File | null>(null); // This is for the player
+  const [videoUrl, setVideoUrl] = useState<string | null>(null); // For the player
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [segmentData, setSegmentData] = useState<SegmentResponse | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -36,18 +36,20 @@ const Dashboard = () => {
     }
   }, [user, navigate]);
 
+  // This useEffect is for the VISUALIZATION video file
   useEffect(() => {
     if (videoFile) {
       const url = URL.createObjectURL(videoFile);
       setVideoUrl(url);
-
       return () => {
         URL.revokeObjectURL(url);
       };
+    } else {
+      setVideoUrl(null); // Clear video URL if no video file
     }
   }, [videoFile]);
 
-  const handleFileUpload = (file: File, type: 'suit' | 'gloveRight' | 'gloveLeft' | 'video') => {
+  const handleFileUpload = (file: File, type: 'suit' | 'gloveRight' | 'gloveLeft' | 'video' | 'bag') => {
     switch (type) {
       case 'suit':
         setSuitFile(file);
@@ -58,8 +60,11 @@ const Dashboard = () => {
       case 'gloveLeft':
         setGloveLeftFile(file);
         break;
-      case 'video':
+      case 'video': // For the player
         setVideoFile(file);
+        break;
+      case 'bag': // For backend processing
+        setBagFile(file);
         break;
     }
   };
@@ -68,25 +73,27 @@ const Dashboard = () => {
     if (!suitFile || !gloveRightFile || !gloveLeftFile) {
       toast({
         variant: 'destructive',
-        title: 'Missing files',
+        title: 'Missing CSV files',
         description: 'Please upload all required CSV files',
       });
       return;
     }
 
-    if (!videoFile) {
+    if (!bagFile) { // Check for BAG file
       toast({
         variant: 'destructive',
-        title: 'Missing video',
-        description: 'Please upload a video file',
+        title: 'Missing BAG file',
+        description: 'Please upload a .bag file for processing',
       });
       return;
     }
 
+    // Note: videoFile (for player) is not required for processing
+
     setIsProcessing(true);
 
     try {
-      const data = await processFiles(suitFile, gloveRightFile, gloveLeftFile);
+      const data = await processFiles(suitFile, gloveRightFile, gloveLeftFile, bagFile); // Pass bagFile
       setSegmentData(data);
 
       toast({
@@ -109,7 +116,8 @@ const Dashboard = () => {
     setSuitFile(null);
     setGloveRightFile(null);
     setGloveLeftFile(null);
-    setVideoFile(null);
+    setBagFile(null); // Reset BAG file
+    setVideoFile(null); // Reset video file for player
     setVideoUrl(null);
     setSegmentData(null);
     setIsPlaying(false);
@@ -117,6 +125,10 @@ const Dashboard = () => {
   };
 
   const togglePlayPause = () => {
+    if (!videoUrl) { // Cannot play if no video is loaded for visualization
+      toast({ title: "No video loaded", description: "Please upload a video file for visualization.", variant: "default" });
+      return;
+    }
     if (videoRef1.current && videoRef2.current) {
       if (isPlaying) {
         videoRef1.current.pause();
@@ -131,9 +143,8 @@ const Dashboard = () => {
 
   const handleTimeUpdate = (time: number) => {
     setCurrentTime(time);
-
-    if (videoRef1.current && videoRef2.current) {
-      // Keep videos in sync
+    // Sync logic remains the same
+    if (videoRef1.current && videoRef2.current && videoUrl) {
       const tolerance = 0.1;
       if (Math.abs(videoRef1.current.currentTime - videoRef2.current.currentTime) > tolerance) {
         videoRef2.current.currentTime = videoRef1.current.currentTime;
@@ -141,7 +152,8 @@ const Dashboard = () => {
     }
   };
 
-  const allFilesUploaded = suitFile && gloveRightFile && gloveLeftFile && videoFile;
+  // Files required for backend processing
+  const allFilesForProcessingUploaded = suitFile && gloveRightFile && gloveLeftFile && bagFile;
 
   return (
       <div className="min-h-screen bg-background">
@@ -168,11 +180,11 @@ const Dashboard = () => {
           {!segmentData ? (
               <Card>
                 <CardContent className="p-6">
-                  <h2 className="text-lg font-medium mb-4">Upload Files</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <h2 className="text-lg font-medium mb-4">Upload Files for Processing</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                     <FileUploader
                         label="Suit File (CSV)"
-                        icon={<Upload size={24} />}
+                        icon={<Upload size={24} />} // Consider using FileText or FileCode from lucide-react
                         accept=".csv"
                         onFileSelected={(file) => handleFileUpload(file, 'suit')}
                         fileName={suitFile?.name}
@@ -191,18 +203,29 @@ const Dashboard = () => {
                         onFileSelected={(file) => handleFileUpload(file, 'gloveLeft')}
                         fileName={gloveLeftFile?.name}
                     />
-                    <FileUploader
-                        label="Video File"
+                    <FileUploader // Uploader for BAG file (sent to backend)
+                        label="BAG File (.bag)"
+                        icon={<Archive size={24} />}
+                        accept=".bag"
+                        onFileSelected={(file) => handleFileUpload(file, 'bag')}
+                        fileName={bagFile?.name}
+                    />
+                  </div>
+                  <h2 className="text-lg font-medium mb-4 pt-4 border-t">Upload Video for Visualization (Optional)</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FileUploader // Uploader for Video file (for frontend player only)
+                        label="Video File (e.g., .mp4, .webm)"
                         icon={<FileVideo size={24} />}
                         accept="video/*"
                         onFileSelected={(file) => handleFileUpload(file, 'video')}
                         fileName={videoFile?.name}
                     />
+                    <div /> {/* Placeholder for grid layout if only one item in this row */}
                   </div>
-                  <div className="mt-6 flex justify-end">
+                  <div className="mt-8 flex justify-end">
                     <Button
                         onClick={handleProcessFiles}
-                        disabled={!allFilesUploaded || isProcessing}
+                        disabled={!allFilesForProcessingUploaded || isProcessing}
                         className="w-full md:w-auto"
                     >
                       {isProcessing ? 'Processing...' : 'Process Files'}
@@ -220,6 +243,7 @@ const Dashboard = () => {
                         size="icon"
                         onClick={togglePlayPause}
                         className="rounded-full"
+                        disabled={!videoUrl} // Disable if no visualization video is loaded
                     >
                       {isPlaying ? <Pause size={18} /> : <Play size={18} />}
                     </Button>
@@ -234,6 +258,13 @@ const Dashboard = () => {
                   </div>
                 </div>
 
+                {!videoUrl && (
+                    <div className="p-4 text-center text-muted-foreground bg-secondary rounded-md">
+                      No video uploaded for visualization. Segments are processed, but playback is unavailable.
+                      You can upload a video on the previous screen by clicking "Reset".
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <h3 className="text-lg font-medium mb-2 flex items-center">
@@ -242,7 +273,7 @@ const Dashboard = () => {
                     </h3>
                     <VideoPlayer
                         videoRef={videoRef1}
-                        videoUrl={videoUrl}
+                        videoUrl={videoUrl} // Uses the separate videoUrl for playback
                         segments={segmentData.bilstm_segments}
                         currentTime={currentTime}
                         onTimeUpdate={handleTimeUpdate}
@@ -250,7 +281,7 @@ const Dashboard = () => {
                         setIsPlaying={setIsPlaying}
                         type="bilstm"
                         videoRef2={videoRef2}
-                        muted={false}  // Left video with sound
+                        muted={false}
                     />
                   </div>
 
@@ -261,7 +292,7 @@ const Dashboard = () => {
                     </h3>
                     <VideoPlayer
                         videoRef={videoRef2}
-                        videoUrl={videoUrl}
+                        videoUrl={videoUrl} // Uses the separate videoUrl for playback
                         segments={segmentData.bigru_segments}
                         currentTime={currentTime}
                         onTimeUpdate={handleTimeUpdate}
@@ -269,7 +300,7 @@ const Dashboard = () => {
                         setIsPlaying={setIsPlaying}
                         type="bigru"
                         videoRef2={videoRef1}
-                        muted={true}  // Right video muted
+                        muted={true}
                     />
                   </div>
                 </div>
@@ -281,4 +312,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
