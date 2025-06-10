@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D # type: ignore # Required for projection='3d'
 
 # --- Configuration ---
-MEAN_SHAPE_FILE = "./catalin_face_mean_shape/mean_face_shape_478.npy"  # Path to your generated .npy file
+MEAN_SHAPE_FILE = "./marinela_face_mean_shape/mean_face_shape_478.npy"  # Path to your generated .npy file
 PLOT_TITLE_ORIGINAL = "Original Mean Face Shape (478 Landmarks)"
 PLOT_TITLE_CLEANED = "Cleaned Mean Face Shape (Outliers Removed/Zeroed)"
 PLOT_POINT_SIZE = 2

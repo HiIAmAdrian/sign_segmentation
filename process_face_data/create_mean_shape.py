@@ -7,8 +7,8 @@ import glob
 # Select a few of your BEST quality CSV files (unoccluded, neutral expression, good depth)
 # These should be CSVs that have ALREADY been processed by MediaPipe for depth,
 # and ideally, ALREADY SMOOTHED by the OneEuroFilter if you have those.
-CSV_FILES_FOR_MEAN_SHAPE_PATTERN = "output_test/sentence_00[1-5]_mediapipe_landmarks_py_oneeuro_smoothed.csv"  # Example: first 5 smoothed sentences
-OUTPUT_MEAN_SHAPE_FILE = "./catalin_face_mean_shape/mean_face_shape_478.npy"  # Output file
+CSV_FILES_FOR_MEAN_SHAPE_PATTERN = "output_test/sentence_00[1-3]_mediapipe_landmarks_py_oneeuro_smoothed.csv"  # Example: first 5 smoothed sentences
+OUTPUT_MEAN_SHAPE_FILE = "./marinela_face_mean_shape/mean_face_shape_478.npy"  # Output file
 
 MEDIAPIPE_LANDMARK_COUNT = 478  # Or 468, must match your data
 

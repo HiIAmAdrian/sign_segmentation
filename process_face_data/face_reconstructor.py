@@ -8,11 +8,11 @@ import glob # For finding files matching a pattern
 
 # --- Configuration ---
 # Directory containing your input CSV files
-INPUT_CSV_DIR = "output_landmarks_csv_catalin_occlusion_normalised" # EXAMPLE: Replace with your input directory
+INPUT_CSV_DIR = "output_landmarks_csv_marinela_occlusion_normalised" # EXAMPLE: Replace with your input directory
 # Pattern to match your CSV files within INPUT_CSV_DIR
 INPUT_CSV_PATTERN = "sentence_008_mediapipe_landmarks_py_oneeuro_smoothed_filled_ransac.csv" # EXAMPLE: e.g., "*.csv" or "sentence_*_smoothed.csv"
 
-OUTPUT_VIDEO_FILENAME = "face_reconstruction_output/face_reconstruction_all_sentences_video.mp4" # Output video name
+OUTPUT_VIDEO_FILENAME = "face_reconstruction_output/face_reconstruction_all_sentences_video-marinela.mp4" # Output video name
 FPS = 60 # Frames per second for the output video
 PLOT_POINT_SIZE = 2
 MEDIAPIPE_LANDMARK_COUNT = 478 # Adjust to 468 if needed

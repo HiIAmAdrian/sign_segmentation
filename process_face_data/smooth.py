@@ -5,8 +5,8 @@ import glob
 from OneEuroFilter import OneEuroFilter
 
 # --- Configuration ---
-INPUT_CSV_PATTERN = "output_landmarks_csv_catalin/sentence_*_mediapipe_landmarks_py.csv"
-OUTPUT_SMOOTHED_CSV_DIR = "output_landmarks_csv_catalin_smoothed"  # New output dir
+INPUT_CSV_PATTERN = "output_landmarks_csv_marinela/sentence_*_mediapipe_landmarks_py.csv"
+OUTPUT_SMOOTHED_CSV_DIR = "output_landmarks_csv_marinela_smoothed"  # New output dir
 
 FILTER_MIN_CUTOFF = 0.7
 FILTER_BETA = 0.007

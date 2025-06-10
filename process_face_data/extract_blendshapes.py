@@ -220,12 +220,12 @@ if __name__ == "__main__":
         exit()
 
     # --- Configuration for your files ---
-    bag_files_directory = r"D:\SegmentationThesis\output_realsense60fps+tesla Catalin"  # YOUR BAG FILE DIRECTORY
-    output_blendshapes_csv_directory = "./output_blendshapes_csv_catalin"  # Separate directory for blendshape CSVs
+    bag_files_directory = r"D:\SegmentationThesis\output_realsense60fps+tesla Marinela"  # YOUR BAG FILE DIRECTORY
+    output_blendshapes_csv_directory = "./output_blendshapes_csv_marinela"  # Separate directory for blendshape CSVs
 
     start_sentence_id = 1
     max_sentences_to_check = 100  # Or however many sentences/BAGs you have
-    trim_start_seconds = 1.0  # Same trim as your other script, if desired
+    trim_start_seconds = 0.3  # Same trim as your other script, if desired
 
     # --- Setup Directories ---
     if not os.path.exists(bag_files_directory):

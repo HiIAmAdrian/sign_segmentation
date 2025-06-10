@@ -248,11 +248,11 @@ if __name__ == "__main__":
         print(f"Please download 'face_landmarker.task' and place it at: {os.path.abspath(MODEL_PATH)}")
         exit()
 
-    bag_files_directory = r"D:\SegmentationThesis\output_realsense60fps+tesla Catalin"
-    output_csv_directory = "./output_landmarks_csv_catalin"
+    bag_files_directory = r"D:\SegmentationThesis\output_realsense60fps+tesla Marinela"
+    output_csv_directory = "./output_landmarks_csv_marinela"
     start_sentence_id = 1
     max_sentences_to_check = 100  # Check for up to 100 sentences
-    trim_start_seconds = 1.0
+    trim_start_seconds = 0.3
 
     if not os.path.exists(bag_files_directory):
         print(f"Error: BAG files directory not found: {os.path.abspath(bag_files_directory)}")

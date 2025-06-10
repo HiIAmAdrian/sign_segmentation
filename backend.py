@@ -10,7 +10,7 @@ import io  # To read files from memory
 import traceback
 from flask_cors import CORS
 
-from process_data import GLOVE_RIGHT_DATA_DIR, GLOVE_LEFT_DATA_DIR
+from process_data_teslasuit_gloves import GLOVE_RIGHT_DATA_DIR, GLOVE_LEFT_DATA_DIR
 
 # --- Configuration ---
 # Paths relative to where this script is run

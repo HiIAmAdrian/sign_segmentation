@@ -7,10 +7,10 @@ import glob
 # from mpl_toolkits.mplot3d import Axes3D # Uncomment for debug plotting
 
 # --- Configuration ---
-MEAN_SHAPE_FILE = "./catalin_face_mean_shape/mean_face_shape_478_cleaned.npy"
-INPUT_CSV_DIR = "output_landmarks_csv_catalin_smoothed"
+MEAN_SHAPE_FILE = "./marinela_face_mean_shape/mean_face_shape_478_cleaned.npy"
+INPUT_CSV_DIR = "output_landmarks_csv_marinela_smoothed"
 INPUT_CSV_PATTERN = "*.csv"  # e.g., "sentence_008*_smoothed.csv" for targeted debugging
-OUTPUT_CSV_DIR = "output_landmarks_csv_catalin_occlusion_normalised"  # Updated output dir name
+OUTPUT_CSV_DIR = "output_landmarks_csv_marinela_occlusion_normalised"  # Updated output dir name
 
 MEDIAPIPE_LANDMARK_COUNT = 478
 MIN_VISIBLE_LANDMARKS_RATIO = 0.25  # For final fill alignment

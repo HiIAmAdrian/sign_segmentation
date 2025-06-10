@@ -4,295 +4,227 @@ import pandas as pd
 import pickle
 from pathlib import Path
 import traceback
+import re
 
 # --- Configuration ---
+FINAL_COMBINED_DATA_DIR = Path("./final_combined_data_for_training_ALL_SIGNERS")
+FINAL_COMBINED_PKL = FINAL_COMBINED_DATA_DIR / "all_data_final_features_ts_facial.pkl"
 
-# Input Directories/Files
-PROCESSED_DATA_DIR = Path("./processed_combined_data_both_gloves")
-PROCESSED_DATA_FILE = PROCESSED_DATA_DIR / "combined_interpolated_processed_sequences.pkl"
-EAF_ANNOTATION_DIR = Path("./elan_annotations")  # Directory containing ALL your .eaf files
-# !!! Need original suit CSVs for accurate timestamps !!!
-ORIGINAL_SUIT_CSV_DIR = Path("./suit")  # From previous script
+PARTICIPANT_INFO_CONFIG = {
+    "participant_catalin_data": {
+        "base_dir_path": Path("D:/SegmentationThesis/output_realsense60fps+tesla Catalin"),
+        "trim_sec": 1.0
+    },
+    "participant_marinela_data": {
+        "base_dir_path": Path("D:/SegmentationThesis/output_realsense60fps+tesla Marinela"),
+        "trim_sec": 0.3
+    },
+}
+EAF_SUBDIR_NAME = "elan_annotations"
+# ORIGINAL_SUIT_CSV_SUBDIR_NAME nu mai este necesar pentru logica principală de mapare, dar poate fi păstrat dacă e util altundeva
+OUTPUT_ANNOTATION_BIO_PKL = FINAL_COMBINED_DATA_DIR / "annotations_bio_final_combined.pkl"
 
-# Output File
-OUTPUT_ANNOTATION_PKL = Path("./processed_combined_data_both_gloves/annotations.pkl")  # New name for I/O only
-
-# EAF Parsing Settings
-TARGET_TIER_ID = "default"  # Tier name in ELAN containing sign annotations
-TARGET_ANNOTATION_VALUE = "i"  # The label used in ELAN for sign segments ('I')
-
-# Synchronization Offset (if video didn't start at same ms as MoCap)
-SYNC_OFFSET_MS = 0  # Adjust if necessary based on your sync analysis
-
-# Label Mapping (Simplified: I=1, O=0)
-LABEL_O = 0
-LABEL_I = 1
+TARGET_TIER_ID = "default"
+SYNC_OFFSET_MS = 0
+LABEL_O, LABEL_B, LABEL_I = 0, 1, 2
 
 
-# --- Helper Functions ---
-# (parse_eaf, get_mocap_timestamps, map_time_to_frame remain the same as previous version)
-def parse_eaf(eaf_path, target_tier_id="default", target_annotation_value="i"):
-    """Parses an ELAN EAF file to extract time segments for a specific tier and value."""
+def parse_eaf(eaf_path, target_tier_id="default"):
     segments = []
     try:
         tree = ET.parse(eaf_path)
         root = tree.getroot()
-        time_slots = {slot.attrib['TIME_SLOT_ID']: int(slot.attrib['TIME_VALUE'])
-                      for slot in root.findall(".//TIME_SLOT")}
-        tier = None
-        for t in root.findall(f".//TIER[@TIER_ID='{target_tier_id}']"):
-            tier = t;
-            break
-        if tier is None:
-            print(f"  --> Warning: Tier '{target_tier_id}' not found in {eaf_path.name}")
+        time_slots = {slot.attrib['TIME_SLOT_ID']: int(slot.attrib['TIME_VALUE']) for slot in
+                      root.findall(".//TIME_SLOT")}
+        tier_found = False
+        for tier in root.findall(f".//TIER"):
+            if tier.attrib.get('TIER_ID') == target_tier_id:
+                tier_found = True
+                for ann in tier.findall(".//ALIGNABLE_ANNOTATION"):
+                    t1, t2 = ann.attrib['TIME_SLOT_REF1'], ann.attrib['TIME_SLOT_REF2']
+                    if t1 in time_slots and t2 in time_slots:
+                        segments.append((time_slots[t1], time_slots[t2]))
+                break
+        if not tier_found:
+            # print(f"    DEBUG: Tier '{target_tier_id}' not found in {eaf_path.name}.")
             return []
-        for annotation in tier.findall(".//ALIGNABLE_ANNOTATION"):
-            value_element = annotation.find("ANNOTATION_VALUE")
-            # Handle annotations with potentially empty values robustly
-            value = value_element.text if value_element is not None and value_element.text is not None else ""
-            if value == target_annotation_value:
-                t1_id = annotation.attrib['TIME_SLOT_REF1']
-                t2_id = annotation.attrib['TIME_SLOT_REF2']
-                if t1_id in time_slots and t2_id in time_slots:
-                    start_ms = time_slots[t1_id]
-                    end_ms = time_slots[t2_id]
-                    segments.append((start_ms, end_ms))
-                else:
-                    print(
-                        f"  --> Warning: Time slot refs {t1_id}/{t2_id} not found for annotation ID {annotation.attrib.get('ANNOTATION_ID', 'N/A')} in {eaf_path.name}")
         segments.sort()
         return segments
-    except ET.ParseError as e:
-        print(f"  --> Error: Failed to parse XML in {eaf_path.name}: {e}")
+    except ET.ParseError as pe:
+        print(f"    WARNING: XML ParseError for EAF {eaf_path.name}: {pe}")
         return None
     except Exception as e:
-        print(f"  --> Error: Unexpected error parsing {eaf_path.name}: {e}")
-        traceback.print_exc();
+        print(f"    WARNING: General error parsing EAF {eaf_path.name}: {e}")
         return None
 
 
-def get_mocap_timestamps(mocap_csv_path):
-    """Loads the frame_timestamp column from the original MoCap CSV."""
-    try:
-        df = pd.read_csv(mocap_csv_path, usecols=['frame_timestamp'], converters={'frame_timestamp': float})
-        timestamps_ms = df['frame_timestamp'].sort_values().to_numpy()
-        if np.isnan(timestamps_ms).any():
-            print(f"  --> Warning: NaNs found in timestamps of {mocap_csv_path.name}. Attempting to fill.")
-            timestamps_ms = pd.Series(timestamps_ms).ffill().bfill().fillna(0).to_numpy()
-        return timestamps_ms
-    except FileNotFoundError:
-        print(f"  --> Error: Original MoCap CSV not found: {mocap_csv_path.name}");
-        return None
-    except ValueError:
-        print(f"  --> Error: 'frame_timestamp' column not found or invalid in {mocap_csv_path.name}");
-        return None
-    except Exception as e:
-        print(f"  --> Error loading timestamps from {mocap_csv_path.name}: {e}");
-        return None
+# get_original_mocap_timestamps_trimmed nu mai este necesară pentru această logică
 
-
-def map_time_to_frame(target_ms, mocap_timestamps_ms):
-    """Finds the index of the MoCap frame closest to the target time."""
-    if mocap_timestamps_ms is None or len(mocap_timestamps_ms) == 0: return -1
-    time_diff = np.abs(mocap_timestamps_ms - target_ms)
-    closest_frame_index = np.argmin(time_diff)
-    return int(closest_frame_index)
-
-
-# --- Main Logic ---
-
-# 1. Load processed data info (lengths, IDs, and splits)
-print(f"Loading processed data info from: {PROCESSED_DATA_FILE}")
-sequence_info = {}  # Store {mocap_filename: {'length': frame_count, 'split': 'train'/'val'/'test'}}
-all_mocap_filenames_in_pkl = set()
+print(f"Loading final combined data from: {FINAL_COMBINED_PKL}")
+if not FINAL_COMBINED_PKL.exists():
+    print(f"FATAL: Final combined PKL file not found at {FINAL_COMBINED_PKL}.");
+    exit()
 try:
-    with open(PROCESSED_DATA_FILE, 'rb') as f:
-        data = pickle.load(f)
-    for split in ['train', 'val', 'test']:
-        ids_key = f'{split}_ids'
-        x_key = f'X_{split}'
-        if ids_key in data and x_key in data:
-            for i, seq_info_dict in enumerate(data[ids_key]):
-                # Use 'filename' from the identifier dictionary
-                mocap_filename = seq_info_dict.get('filename')
-                if mocap_filename:
-                    all_mocap_filenames_in_pkl.add(mocap_filename)
-                    seq_data = data[x_key][i]
-                    length = seq_data.shape[0] if seq_data is not None and hasattr(seq_data, 'shape') else 0
-                    if length > 0:
-                        sequence_info[mocap_filename] = {'length': length, 'split': split}
-                    else:
-                        print(
-                            f"Warning: Sequence {mocap_filename} from split '{split}' has invalid length ({length}). It will be skipped.")
-                else:
-                    print(
-                        f"Warning: Missing 'filename' key in identifier dictionary for sequence {i} in split '{split}'.")
-
-        else:
-            print(f"Warning: Keys '{ids_key}' or '{x_key}' not found in processed data file for split '{split}'.")
-
-    if not sequence_info:
-        print("FATAL Error: No valid sequence information loaded from the .pkl file. Cannot proceed.")
-        exit()
-    print(f"Loaded info for {len(sequence_info)} sequences from .pkl file.")
-
+    with open(FINAL_COMBINED_PKL, 'rb') as f:
+        loaded_final_data = pickle.load(f)
 except Exception as e:
-    print(f"FATAL Error loading processed data file: {e}")
-    traceback.print_exc()
-    exit()
+    print(f"FATAL: Error loading final combined PKL: {e}"); traceback.print_exc(); exit()
 
-# 2. Initialize results dictionary
-y_splits = {'train': [], 'val': [], 'test': []}
-temp_results = {}  # Store {mocap_filename: labels_array} temporarily
+X_train_df_indexed = loaded_final_data.get('X_train_df_indexed', [])
+train_ids_final = loaded_final_data.get('train_ids', [])
+X_val_df_indexed = loaded_final_data.get('X_val_df_indexed', [])
+val_ids_final = loaded_final_data.get('val_ids', [])
+X_test_df_indexed = loaded_final_data.get('X_test_df_indexed', [])
+test_ids_final = loaded_final_data.get('test_ids', [])
 
-# 3. Iterate through EAF files and process annotations
-print(f"\n--- Processing EAF annotations from: {EAF_ANNOTATION_DIR} ---")
-eaf_files = list(EAF_ANNOTATION_DIR.glob("*.eaf"))
+y_splits_bio = {'train': [], 'val': [], 'test': []}
 processed_eaf_count = 0
-error_eaf_count = 0
+error_details_eaf_processing = []
 
-if not eaf_files:
-    print(f"Error: No .eaf files found in {EAF_ANNOTATION_DIR}. Cannot generate labels.")
-    exit()
+datasets_for_annotation = {
+    "train": (X_train_df_indexed, train_ids_final),
+    "val": (X_val_df_indexed, val_ids_final),
+    "test": (X_test_df_indexed, test_ids_final),
+}
+print(f"\n--- Processing EAF annotations for final combined data ---")
 
-for eaf_path in eaf_files:
-    print(f"\nProcessing EAF file: {eaf_path.name}")
-
-    # --- Determine corresponding MoCap filename ---
-    # This assumes a simple naming convention (e.g., removing '.eaf' and adding '_suit.csv')
-    # !!! ADJUST THIS LOGIC if your naming differs !!!
-    try:
-        base_name = eaf_path.stem  # Filename without extension
-        # Try removing common annotation suffixes if present
-        if base_name.endswith("_annotations"): base_name = base_name[:-12]
-        if base_name.endswith("_elan"): base_name = base_name[:-5]
-        # Assume it matches the base name of the suit file
-        corresponding_mocap_filename = f"{base_name}_suit.csv"
-    except Exception:
-        print(f"  --> Error: Could not determine MoCap filename from EAF name: {eaf_path.name}. Skipping.")
-        error_eaf_count += 1
+for split_name, (X_df_list_current_split, ids_list_current_split) in datasets_for_annotation.items():
+    print(f"\n  -- Annotating '{split_name}' set ({len(ids_list_current_split)} sequences) --")
+    if not X_df_list_current_split or not ids_list_current_split: continue
+    if len(X_df_list_current_split) != len(ids_list_current_split):
+        print(f"    CRITICAL WARNING: Mismatch lengths for '{split_name}'. Skipping.");
         continue
 
-    # --- Check if MoCap file info exists ---
-    if corresponding_mocap_filename not in sequence_info:
-        print(
-            f"  --> Warning: MoCap sequence info for '{corresponding_mocap_filename}' (derived from {eaf_path.name}) not found in the processed data .pkl file. Skipping EAF.")
-        error_eaf_count += 1
-        continue
+    for i, df_final_combined_seq in enumerate(X_df_list_current_split):
+        current_id_dict = ids_list_current_split[i]
+        original_ts_csv_filename = current_id_dict['filename']
+        participant_key_raw_from_id = current_id_dict.get('participant')
+        global_processing_key = f"{participant_key_raw_from_id}::{original_ts_csv_filename}"
 
-    mocap_info = sequence_info[corresponding_mocap_filename]
-    total_mocap_frames = mocap_info['length']
-
-    # --- Load MoCap Timestamps ---
-    original_mocap_path = ORIGINAL_SUIT_CSV_DIR / corresponding_mocap_filename
-    mocap_timestamps_ms = get_mocap_timestamps(original_mocap_path)
-    if mocap_timestamps_ms is None:
-        print(f"  --> Error: Could not load timestamps for {corresponding_mocap_filename}. Skipping EAF.")
-        error_eaf_count += 1
-        continue
-
-    # --- Parse EAF ---
-    video_segments_ms = parse_eaf(eaf_path, TARGET_TIER_ID, TARGET_ANNOTATION_VALUE)
-    if video_segments_ms is None:
-        print(f"  --> Error: Failed to parse EAF file {eaf_path.name}. Skipping.")
-        error_eaf_count += 1
-        continue
-    if not video_segments_ms:
-        print(
-            f"  --> Info: No annotations found with value '{TARGET_ANNOTATION_VALUE}' on tier '{TARGET_TIER_ID}'. Creating all 'O' labels.")
-
-    # --- Create B-I-O (actually I/O) Label Array ---
-    labels = np.full(total_mocap_frames, LABEL_O, dtype=int)  # Initialize all to 'O' (0)
-
-    for video_start_ms, video_end_ms in video_segments_ms:
-        mocap_target_start_ms = video_start_ms + SYNC_OFFSET_MS
-        mocap_target_end_ms = video_end_ms + SYNC_OFFSET_MS
-
-        start_frame = map_time_to_frame(mocap_target_start_ms, mocap_timestamps_ms)
-        end_frame = map_time_to_frame(mocap_target_end_ms, mocap_timestamps_ms)
-
-        if start_frame == -1 or end_frame == -1:
-            print(f"  --> Error mapping time for segment ({video_start_ms}-{video_end_ms})ms. Skipping.")
+        if df_final_combined_seq is None or df_final_combined_seq.empty:
+            error_details_eaf_processing.append({'k': global_processing_key, 'r': "DF empty", 's': split_name})
+            y_splits_bio[split_name].append(np.array([], dtype=int));
+            continue
+        if not isinstance(df_final_combined_seq.index, pd.TimedeltaIndex):
+            error_details_eaf_processing.append({'k': global_processing_key, 'r': "No TimedeltaIndex", 's': split_name})
+            y_splits_bio[split_name].append(np.full(df_final_combined_seq.shape[0], LABEL_O, dtype=int));
             continue
 
-        start_frame = max(0, start_frame)
-        end_frame = min(total_mocap_frames - 1, end_frame)
+        num_frames_final_seq = df_final_combined_seq.shape[0]
+        final_timedelta_index = df_final_combined_seq.index
 
-        if start_frame > end_frame:
-            print(
-                f"  --> Warning: Start frame ({start_frame}) > end frame ({end_frame}) for segment ({video_start_ms}-{video_end_ms})ms. Marking only start frame as 'I'.")
-            labels[start_frame] = LABEL_I  # Mark single frame as Inside
-        else:
-            # Mark frames from start_frame up to and including end_frame as 'I' (1)
-            labels[start_frame: end_frame + 1] = LABEL_I
+        participant_config_key = None
+        if participant_key_raw_from_id:
+            if "catalin" in participant_key_raw_from_id.lower():
+                participant_config_key = "participant_catalin_data"
+            elif "marinela" in participant_key_raw_from_id.lower():
+                participant_config_key = "participant_marinela_data"
 
-    # Store the generated labels temporarily
-    temp_results[corresponding_mocap_filename] = labels
-    processed_eaf_count += 1
+        if not participant_config_key or participant_config_key not in PARTICIPANT_INFO_CONFIG:
+            error_details_eaf_processing.append(
+                {'k': global_processing_key, 'r': f"No PConfig for '{participant_key_raw_from_id}'", 's': split_name})
+            y_splits_bio[split_name].append(np.full(num_frames_final_seq, LABEL_O, dtype=int));
+            continue
 
-# 4. Assign results to correct splits
-print("\n--- Assigning generated labels to splits ---")
-processed_filenames_from_eaf = set(temp_results.keys())
-for mocap_filename, info in sequence_info.items():
-    split = info['split']
-    if mocap_filename in temp_results:
-        y_splits[split].append(temp_results[mocap_filename])
-    else:
-        # Handle sequences from PKL that didn't have a matching EAF processed
+        p_conf = PARTICIPANT_INFO_CONFIG[participant_config_key]
+        p_base_dir, trim_sec_for_this_participant = p_conf["base_dir_path"], p_conf["trim_sec"]
+
+        eaf_match = re.match(r"(sentence_\d+_ts)_suit_mocap\.csv", original_ts_csv_filename, re.IGNORECASE)
+        if not eaf_match:
+            error_details_eaf_processing.append(
+                {'k': global_processing_key, 'r': f"No base name from {original_ts_csv_filename}", 's': split_name})
+            y_splits_bio[split_name].append(np.full(num_frames_final_seq, LABEL_O, dtype=int));
+            continue
+        eaf_base = eaf_match.group(1).replace('_ts', '')
+        eaf_path = p_base_dir / (EAF_SUBDIR_NAME or "") / f"{eaf_base}_realsense.eaf"
+
+        if not eaf_path.exists():
+            error_details_eaf_processing.append(
+                {'k': global_processing_key, 'r': "EAF not found", 'p': str(eaf_path), 's': split_name})
+            y_splits_bio[split_name].append(np.full(num_frames_final_seq, LABEL_O, dtype=int));
+            continue
+
+        video_segments_ms = parse_eaf(eaf_path, TARGET_TIER_ID)
+        if video_segments_ms is None:
+            error_details_eaf_processing.append(
+                {'k': global_processing_key, 'r': f"EAF parse error: {eaf_path.name}", 's': split_name})
+            y_splits_bio[split_name].append(np.full(num_frames_final_seq, LABEL_O, dtype=int));
+            continue
+
+        labels_bio = np.full(num_frames_final_seq, LABEL_O, dtype=int)
+        trim_offset_us = trim_sec_for_this_participant * 1_000_000
+
+        if video_segments_ms:
+            # print(f"    DEBUG Key: {global_processing_key} (Frames: {num_frames_final_seq})")
+            for seg_idx, (video_start_ms, video_end_ms) in enumerate(video_segments_ms):
+                eaf_start_sync_us = (video_start_ms + SYNC_OFFSET_MS) * 1000
+                eaf_end_sync_us = (video_end_ms + SYNC_OFFSET_MS) * 1000
+
+                target_start_for_lookup_us = max(0, eaf_start_sync_us - trim_offset_us)
+                target_end_for_lookup_us = max(0, eaf_end_sync_us - trim_offset_us)
+
+                if target_end_for_lookup_us <= target_start_for_lookup_us:
+                    continue
+
+                start_frame_idx = final_timedelta_index.searchsorted(
+                    pd.Timedelta(microseconds=target_start_for_lookup_us), side='left')
+                end_frame_idx = final_timedelta_index.searchsorted(pd.Timedelta(microseconds=target_end_for_lookup_us),
+                                                                   side='right') - 1
+
+                actual_sf = max(0, min(start_frame_idx, num_frames_final_seq - 1))
+                actual_ef = max(0, min(end_frame_idx, num_frames_final_seq - 1))
+
+                if actual_sf <= actual_ef:
+                    labels_bio[actual_sf] = LABEL_B
+                    if actual_sf < actual_ef:
+                        labels_bio[actual_sf + 1: actual_ef + 1] = LABEL_I
+
+        y_splits_bio[split_name].append(labels_bio)
+        processed_eaf_count += 1
+
+print(f"\n--- Summary of Annotation ---")
+print(f"Successfully generated annotations for {processed_eaf_count} sequences.")
+num_errors_recorded = len(error_details_eaf_processing)
+if num_errors_recorded > 0:
+    print(f"Skipped or encountered errors for {num_errors_recorded} sequences. Details:")
+    for err in error_details_eaf_processing: print(
+        f"  - Key: {err.get('k')}, Split: {err.get('s')}, Reason: {err.get('r')}")
+total_labels_assigned = sum(len(v) for v in y_splits_bio.values())
+print(f"Total B-I-O label arrays assigned: {total_labels_assigned}")
+
+lengths_match_final = True;
+error_sequences_final_check = []
+total_ids_from_combined_pkl_check = len(train_ids_final) + len(val_ids_final) + len(test_ids_final)
+for split_name in ['train', 'val', 'test']:
+    X_df_list, Y_labels_list, ids_list = datasets_for_annotation[split_name][0], y_splits_bio[split_name], \
+    datasets_for_annotation[split_name][1]
+    if len(X_df_list) != len(Y_labels_list):
+        print(f"FATAL COUNT MISMATCH split '{split_name}': X {len(X_df_list)}, Y {len(Y_labels_list)}")
+        lengths_match_final = False;
+        continue
+    for k in range(len(X_df_list)):
+        df_x, arr_y, id_dict_k = X_df_list[k], Y_labels_list[k], ids_list[k]
+        key_display = f"{id_dict_k.get('participant', '?')}::{id_dict_k.get('filename', '?')}"
+        if df_x is None or arr_y is None:
+            lengths_match_final = False;
+            error_sequences_final_check.append(f"{key_display}_None");
+            continue
+        if df_x.shape[0] != arr_y.shape[0]:
+            print(f"FATAL LENGTH MISMATCH '{key_display}' (Split {split_name}): X {df_x.shape[0]}, Y {arr_y.shape[0]}")
+            lengths_match_final = False;
+            error_sequences_final_check.append(key_display + "_LenMismatch")
+if lengths_match_final and total_labels_assigned > 0:
+    if total_labels_assigned != total_ids_from_combined_pkl_check:
         print(
-            f"Warning: No annotation generated for sequence '{mocap_filename}' (expected in '{split}' split). Check EAF files/naming.")
-        # Option: Append None, or an array of zeros, or skip this sequence from X/Y lists later
-        # Appending array of zeros (all 'O') for simplicity, but this might be incorrect.
-        print(f"  --> Creating all 'O' labels for {mocap_filename}.")
-        labels = np.full(info['length'], LABEL_O, dtype=int)
-        y_splits[split].append(labels)
-
-# 5. Final Verification and Saving
-print(f"\n--- Summary ---")
-print(f"Successfully processed {processed_eaf_count} EAF files.")
-if error_eaf_count > 0:
-    print(f"Skipped {error_eaf_count} EAF files due to errors.")
-
-final_label_count = sum(len(v) for v in y_splits.values())
-print(f"Generated label arrays for {final_label_count} sequences.")
-
-# Final length check
-print("Verifying label array lengths match feature array lengths...")
-lengths_match = True
-error_sequences = []
-for split in ['train', 'val', 'test']:
-    if f'X_{split}' in data:
-        x_list = data[f'X_{split}']
-        y_list = y_splits.get(split, [])  # Use .get for safety
-        if len(x_list) != len(y_list):
-            print(
-                f"FATAL Error: Mismatch in number of sequences for split '{split}' after processing (X: {len(x_list)}, Y: {len(y_list)}).")
-            print("  This likely means some EAF files were missing or had errors.")
-            lengths_match = False
-            continue  # Check other splits maybe
-        for i in range(len(x_list)):
-            seq_id = data[f'{split}_ids'][i].get('filename', f"Index_{i}")
-            if x_list[i] is not None and y_list[i] is not None:
-                if x_list[i].shape[0] != y_list[i].shape[0]:
-                    print(
-                        f"FATAL Error: Length mismatch for sequence '{seq_id}' in split '{split}' (X: {x_list[i].shape[0]}, Y: {y_list[i].shape[0]})")
-                    lengths_match = False
-                    error_sequences.append(seq_id)
-            elif x_list[i] is None or y_list[i] is None:
-                print(f"Warning: Found None sequence for '{seq_id}' in split '{split}' during final check.")
-
-if lengths_match and final_label_count > 0:
-    print(f"\nSaving final I/O annotation lists to: {OUTPUT_ANNOTATION_PKL}")
+            f"Warning: Total assigned labels ({total_labels_assigned}) != total PKL IDs ({total_ids_from_combined_pkl_check}).")
+    print(f"\nSaving final B-I-O annotation lists to: {OUTPUT_ANNOTATION_BIO_PKL}")
     try:
-        with open(OUTPUT_ANNOTATION_PKL, 'wb') as f:
-            pickle.dump(y_splits, f)
-        print("Annotation lists saved successfully.")
+        with open(OUTPUT_ANNOTATION_BIO_PKL, 'wb') as f:
+            pickle.dump(y_splits_bio, f)
+        print("B-I-O annotation lists saved successfully.")
     except Exception as e:
-        print(f"Error saving annotation pickle file: {e}")
-elif final_label_count == 0:
-    print("\nNo label sequences were generated. Nothing saved.")
+        print(f"Error saving final B-I-O PKL: {e}")
 else:
-    print("\nAnnotations not saved due to length mismatch errors for sequences:")
-    for seq_id in error_sequences: print(f" - {seq_id}")
-
-print("\n--- Annotation Processing Finished ---")
+    print(f"\nAnnotations not saved. FinalMatch: {lengths_match_final}, LabelsAssigned: {total_labels_assigned}")
+    if error_sequences_final_check: print("Issues:", sorted(list(set(error_sequences_final_check))))
+print("\n--- Annotation for Final Combined Data Finished ---")
