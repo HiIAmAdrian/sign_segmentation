@@ -4,9 +4,8 @@ import os
 import glob
 from OneEuroFilter import OneEuroFilter
 
-# --- Configuration ---
-INPUT_CSV_PATTERN = "output_landmarks_csv_marinela/sentence_*_mediapipe_landmarks_py.csv"
-OUTPUT_SMOOTHED_CSV_DIR = "output_landmarks_csv_marinela_smoothed"  # New output dir
+INPUT_CSV_PATTERN = "output_landmarks_csv/sentence_*_mediapipe_landmarks_py.csv"
+OUTPUT_SMOOTHED_CSV_DIR = "output_landmarks_csv_smoothed"
 
 FILTER_MIN_CUTOFF = 0.7
 FILTER_BETA = 0.007
@@ -36,7 +35,7 @@ def apply_oneeuro_to_file(input_csv_path, output_csv_path):
     smoothed_data_rows = []
     grouped_by_frame = df.groupby('frame_id')
 
-    landmark_filters = {}  # Key: landmark_id, Value: [filter_x, filter_y, filter_z]
+    landmark_filters = {}
 
     unique_frame_ids = sorted(df['frame_id'].unique())
     if not unique_frame_ids:
@@ -69,17 +68,11 @@ def apply_oneeuro_to_file(input_csv_path, output_csv_path):
                                np.isclose(original_z, 0.0)
 
             if is_invalid_point:
-                # If the point is invalid (0,0,0), output (0,0,0).
-                # If filters existed for this landmark, remove them so they are re-initialized
-                # when the next valid point for this landmark appears.
                 if lm_idx in landmark_filters:
                     del landmark_filters[lm_idx]
                 smoothed_frame_landmarks_xyz[lm_idx, :] = 0.0
             else:
-                # Valid point, apply filtering
                 if lm_idx not in landmark_filters:
-                    # First time seeing this landmark_id as valid, or first valid after reset.
-                    # Initialize new filters. The first call will seed them.
                     config = {
                         'freq': EFFECTIVE_FPS,
                         'mincutoff': FILTER_MIN_CUTOFF,
@@ -91,18 +84,15 @@ def apply_oneeuro_to_file(input_csv_path, output_csv_path):
                     filter_z = OneEuroFilter(**config)
                     landmark_filters[lm_idx] = [filter_x, filter_y, filter_z]
 
-                    # First call seeds the filter and returns the original value
                     sx = filter_x(original_x, current_timestamp)
                     sy = filter_y(original_y, current_timestamp)
                     sz = filter_z(original_z, current_timestamp)
-                else:  # Filter exists for this landmark, and it's a valid point
+                else:
                     filter_x, filter_y, filter_z = landmark_filters[lm_idx]
                     sx = filter_x(original_x, current_timestamp)
                     sy = filter_y(original_y, current_timestamp)
                     sz = filter_z(original_z, current_timestamp)
 
-                # The filter should return the value itself if it's the first call,
-                # or the filtered value. It shouldn't return None if the input 'x' is not None.
                 smoothed_frame_landmarks_xyz[lm_idx, 0] = sx
                 smoothed_frame_landmarks_xyz[lm_idx, 1] = sy
                 smoothed_frame_landmarks_xyz[lm_idx, 2] = sz
@@ -127,7 +117,6 @@ def apply_oneeuro_to_file(input_csv_path, output_csv_path):
 
 
 def main():
-    # ... (main function remains the same as the previous version) ...
     if not os.path.exists(OUTPUT_SMOOTHED_CSV_DIR):
         os.makedirs(OUTPUT_SMOOTHED_CSV_DIR, exist_ok=True)
         print(f"Created output directory for smoothed CSVs: {OUTPUT_SMOOTHED_CSV_DIR}")

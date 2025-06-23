@@ -1,21 +1,18 @@
 import pandas as pd
 import numpy as np
-# from sklearn.preprocessing import StandardScaler # Eliminat dacă nu se face scalare aici
 from sklearn.model_selection import train_test_split
 import pickle
 from pathlib import Path
 import traceback
 import re
 
-# --- Configuration ---
 PARTICIPANT_BASE_DIRS_WITH_TRIM = {
-    Path("D:\SegmentationThesis\output_realsense60fps+tesla Catalin"): 1.0,  # Cale -> trim_sec
-    Path("D:\SegmentationThesis\output_realsense60fps+tesla Marinela"): 0.3,
+    Path("D:\SegmentationThesis\output_realsense60fps+tesla p1"): 1.0,
+    Path("D:\SegmentationThesis\output_realsense60fps+tesla p2"): 0.3,
 }
 OUTPUT_DIR = Path("./processed_combined_data_all_participants_TESLASUIT_DF_trimmed")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# ... (Restul flag-urilor USE_... și Feature List Generation rămân la fel) ...
 USE_SUIT_ROTATIONS = True
 USE_SUIT_POSITIONS = False
 USE_SUIT_HIPS_POSITION = True
@@ -146,7 +143,7 @@ def load_and_prepare_df(csv_path, selected_features, filename_for_log, trim_star
 
         if trim_start_sec > 0:
             trim_start_us = trim_start_sec * 1_000_000
-            df = df[df[timestamp_col_name] >= trim_start_us].copy()  # .copy() explicit
+            df = df[df[timestamp_col_name] >= trim_start_us].copy()
             if df.empty:
                 return None, []
 
@@ -251,7 +248,7 @@ for participant_base_dir, trim_seconds_for_participant in PARTICIPANT_BASE_DIRS_
             df_suit, _ = load_and_prepare_df(suit_csv_path, SUIT_FEATURES_TO_KEEP, suit_csv_path.name,
                                              trim_seconds_for_participant)
             if df_suit is None or df_suit.empty:
-                skipped_count_participant += 1;
+                skipped_count_participant += 1
                 continue
 
             if USE_SUIT_BIOMECH and relevant_biomech_joints:
@@ -304,7 +301,7 @@ for participant_base_dir, trim_seconds_for_participant in PARTICIPANT_BASE_DIRS_
                 df_combined = df_combined_temp.set_index(merge_col_name).sort_index()
                 df_combined.index.name = 'frame_timestamp_us'
             else:
-                skipped_count_participant += 1;
+                skipped_count_participant += 1
                 continue
 
             cols_to_interpolate_gloves = []
@@ -318,7 +315,7 @@ for participant_base_dir, trim_seconds_for_participant in PARTICIPANT_BASE_DIRS_
                     method='time').ffill().bfill().fillna(0)
 
             if df_combined.empty:
-                skipped_count_participant += 1;
+                skipped_count_participant += 1
                 continue
 
             collected_all_feature_names.update(df_combined.columns)
@@ -373,62 +370,50 @@ print(f"Total unique sequences after deduplication: {len(all_combined_dataframes
 
 print(f"\n--- Global Post-processing ---")
 if not all_combined_dataframes_global:
-    print("Error: No data available after deduplication. Exiting.");
+    print("Error: No data available after deduplication. Exiting.")
     exit()
 if not final_combined_feature_names:
     if all_combined_dataframes_global and not all_combined_dataframes_global[0].empty:
         final_combined_feature_names = sorted(list(all_combined_dataframes_global[0].columns))
     else:
-        print("Error: No feature names collected or derivable. Exiting.");
+        print("Error: No feature names collected or derivable. Exiting.")
         exit()
 
 indices_global = list(range(len(all_combined_dataframes_global)))
 num_total_samples = len(indices_global)
 
-# Recalculare target-uri pentru split
 train_n_target = num_total_samples
 test_n_target = 0
 if TEST_SIZE > 0 and num_total_samples > 0:
     test_n_target = max(1, int(round(num_total_samples * TEST_SIZE)))
-train_n_target = max(0, train_n_target - test_n_target)  # Ce rămâne pentru train+val
+train_n_target = max(0, train_n_target - test_n_target)
 
 val_n_target = 0
-if VALIDATION_SIZE > 0 and train_n_target > 0:  # Dacă mai e ceva pentru train+val
-    # VALIDATION_SIZE e procent din totalul inițial
+if VALIDATION_SIZE > 0 and train_n_target > 0:
     potential_val_n = max(1, int(round(num_total_samples * VALIDATION_SIZE)))
-    val_n_target = min(potential_val_n, train_n_target)  # Nu poate fi mai mare decât ce a rămas
-train_n_target = max(0, train_n_target - val_n_target)  # Ce rămâne efectiv pentru train
+    val_n_target = min(potential_val_n, train_n_target)
+train_n_target = max(0, train_n_target - val_n_target)
 
-# Ajustări finale pentru a asigura că train are cel puțin 1 dacă e posibil
 if train_n_target < 1 and num_total_samples > 0:
-    if val_n_target > 0:  # Încearcă să iei din validare
+    if val_n_target > 0:
         val_n_target -= 1
         train_n_target += 1
-    elif test_n_target > 0 and (num_total_samples - (test_n_target - 1)) >= 1:  # Încearcă să iei din test
+    elif test_n_target > 0 and (num_total_samples - (test_n_target - 1)) >= 1:
         test_n_target -= 1
         train_n_target += 1
-    # Dacă train_n_target tot e < 1, înseamnă că num_total_samples e prea mic (0 sau 1)
 
-# Asigură că suma nu depășește totalul și că nu sunt negative
 if train_n_target + val_n_target + test_n_target > num_total_samples:
-    # Prioritizează test, apoi val. Ajustează train.
     train_n_target = num_total_samples - val_n_target - test_n_target
 if train_n_target < 0: train_n_target = 0
 if val_n_target < 0: val_n_target = 0
 if test_n_target < 0: test_n_target = 0
 
-# Condiție minimă pentru a continua
 min_req_samples = 0
 if train_n_target > 0: min_req_samples += 1
 if val_n_target > 0: min_req_samples += 1
 if test_n_target > 0: min_req_samples += 1
 
-if num_total_samples < min_req_samples and num_total_samples > 0:  # Dacă avem mai puțin decât suma componentelor dorite
-    # Această logică poate deveni complexă. O simplificare ar fi:
-    # Dacă num_total_samples e 1, totul e train.
-    # Dacă e 2, și vrem test, 1 test, 1 train. Dacă vrem val, 1 val, 1 train.
-    # Dacă e 3, și vrem toate, 1, 1, 1.
-    # Pentru scopul actual, vom lăsa verificarea de mai jos să prindă erori.
+if num_total_samples < min_req_samples and num_total_samples > 0:
     print(
         f"Warning: Number of samples ({num_total_samples}) might be too small for desired splits (T:{train_n_target}, V:{val_n_target}, Te:{test_n_target}).")
 
@@ -444,16 +429,15 @@ train_idx, val_idx, test_idx = [], [], []
 if num_total_samples > 0:
     if test_n_target > 0:
         test_split_fraction = test_n_target / num_total_samples
-        # Asigură-te că fracția e validă (între 0 și 1)
         test_split_fraction = max(0.0, min(test_split_fraction, 1.0))
-        if test_split_fraction > 0 and test_split_fraction < 1.0:  # Doar dacă e un split real
+        if test_split_fraction > 0 and test_split_fraction < 1.0:
             train_val_indices, test_idx_temp = train_test_split(indices_global, test_size=test_split_fraction,
                                                                 random_state=RANDOM_STATE, shuffle=True)
             test_idx.extend(test_idx_temp)
-        elif test_split_fraction == 1.0:  # Totul merge la test
+        elif test_split_fraction == 1.0:
             test_idx.extend(indices_global)
             train_val_indices = []
-        else:  # test_split_fraction == 0.0
+        else:
             train_val_indices = list(indices_global)
     else:
         train_val_indices = list(indices_global)
@@ -471,7 +455,7 @@ if num_total_samples > 0:
             elif val_split_fraction == 1.0:
                 val_idx_temp = list(train_val_indices)
                 train_idx_temp = []
-            else:  # val_split_fraction == 0.0
+            else:
                 train_idx_temp = list(train_val_indices)
                 val_idx_temp = []
 

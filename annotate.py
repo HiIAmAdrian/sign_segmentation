@@ -6,22 +6,20 @@ from pathlib import Path
 import traceback
 import re
 
-# --- Configuration ---
 FINAL_COMBINED_DATA_DIR = Path("./final_combined_data_for_training_ALL_SIGNERS")
 FINAL_COMBINED_PKL = FINAL_COMBINED_DATA_DIR / "all_data_final_features_ts_facial.pkl"
 
 PARTICIPANT_INFO_CONFIG = {
-    "participant_catalin_data": {
-        "base_dir_path": Path("D:/SegmentationThesis/output_realsense60fps+tesla Catalin"),
+    "participant_p1_data": {
+        "base_dir_path": Path("D:/SegmentationThesis/output_realsense60fps+tesla p1"),
         "trim_sec": 1.0
     },
-    "participant_marinela_data": {
-        "base_dir_path": Path("D:/SegmentationThesis/output_realsense60fps+tesla Marinela"),
+    "participant_p2_data": {
+        "base_dir_path": Path("D:/SegmentationThesis/output_realsense60fps+tesla p2"),
         "trim_sec": 0.3
     },
 }
 EAF_SUBDIR_NAME = "elan_annotations"
-# ORIGINAL_SUIT_CSV_SUBDIR_NAME nu mai este necesar pentru logica principală de mapare, dar poate fi păstrat dacă e util altundeva
 OUTPUT_ANNOTATION_BIO_PKL = FINAL_COMBINED_DATA_DIR / "annotations_bio_final_combined.pkl"
 
 TARGET_TIER_ID = "default"
@@ -58,7 +56,6 @@ def parse_eaf(eaf_path, target_tier_id="default"):
         return None
 
 
-# get_original_mocap_timestamps_trimmed nu mai este necesară pentru această logică
 
 print(f"Loading final combined data from: {FINAL_COMBINED_PKL}")
 if not FINAL_COMBINED_PKL.exists():
@@ -115,10 +112,10 @@ for split_name, (X_df_list_current_split, ids_list_current_split) in datasets_fo
 
         participant_config_key = None
         if participant_key_raw_from_id:
-            if "catalin" in participant_key_raw_from_id.lower():
-                participant_config_key = "participant_catalin_data"
-            elif "marinela" in participant_key_raw_from_id.lower():
-                participant_config_key = "participant_marinela_data"
+            if "p1" in participant_key_raw_from_id.lower():
+                participant_config_key = "participant_p1_data"
+            elif "p2" in participant_key_raw_from_id.lower():
+                participant_config_key = "participant_p2_data"
 
         if not participant_config_key or participant_config_key not in PARTICIPANT_INFO_CONFIG:
             error_details_eaf_processing.append(

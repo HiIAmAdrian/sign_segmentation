@@ -1,24 +1,19 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D # For 3D plotting
+from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
-import cv2 # For creating video
+import cv2
 import os
-import glob # For finding files matching a pattern
+import glob
 
-# --- Configuration ---
-# Directory containing your input CSV files
-INPUT_CSV_DIR = "output_landmarks_csv_marinela_occlusion_normalised" # EXAMPLE: Replace with your input directory
-# Pattern to match your CSV files within INPUT_CSV_DIR
-INPUT_CSV_PATTERN = "sentence_008_mediapipe_landmarks_py_oneeuro_smoothed_filled_ransac.csv" # EXAMPLE: e.g., "*.csv" or "sentence_*_smoothed.csv"
+INPUT_CSV_DIR = "output_landmarks_csv_occlusion_normalised"
+INPUT_CSV_PATTERN = "sentence_077_mediapipe_landmarks_py_oneeuro_smoothed_filled_ransac.csv"
 
-OUTPUT_VIDEO_FILENAME = "face_reconstruction_output/face_reconstruction_all_sentences_video-marinela.mp4" # Output video name
-FPS = 60 # Frames per second for the output video
+OUTPUT_VIDEO_FILENAME = "face_reconstruction_output/face_reconstruction_all_sentences_video.mp4"
+FPS = 60
 PLOT_POINT_SIZE = 2
-MEDIAPIPE_LANDMARK_COUNT = 478 # Adjust to 468 if needed
+MEDIAPIPE_LANDMARK_COUNT = 478
 
-# LANDMARK_CONNECTIONS = [] # Keep this if you don't want connections
-# Example if you have MediaPipe installed and want to draw connections:
 try:
     from mediapipe.python.solutions.face_mesh_connections import FACEMESH_TESSELATION
     LANDMARK_CONNECTIONS = []
@@ -28,36 +23,30 @@ except ImportError:
     print("MediaPipe not found or FACEMESH_TESSELATION not available. No landmark connections will be drawn.")
 
 
-def plot_face_landmarks_3d(ax, landmarks_xyz, frame_id, sentence_id_str): # sentence_id is now a string
+def plot_face_landmarks_3d(ax, landmarks_xyz, frame_id, sentence_id_str):
     """Plots 3D landmarks for a single frame."""
-    ax.cla() # Clear previous frame
+    ax.cla()
 
-    # Filter out (0,0,0) landmarks, assuming they are invalid or not to be plotted
     valid_landmarks_mask = ~np.all(np.isclose(landmarks_xyz, 0, atol=1e-6), axis=1)
     landmarks_to_plot = landmarks_xyz[valid_landmarks_mask]
 
-    if landmarks_to_plot.shape[0] == 0: # No valid landmarks to plot
+    if landmarks_to_plot.shape[0] == 0:
         ax.set_title(f"Sentence {sentence_id_str}, Frame {frame_id} (No valid landmarks)")
-        # Set default axis limits even if no data, as per your original script
         ax.set_xlim([-0.2, 0.2])
         ax.set_ylim([-0.2, 0.2])
-        ax.set_zlim([0.3, 0.9]) # Original Z limits
-        ax.invert_zaxis() # As per your original script
-        ax.view_init(elev=20, azim=0) # As per your original script
+        ax.set_zlim([0.3, 0.9])
+        ax.invert_zaxis()
+        ax.view_init(elev=20, azim=0)
         return
 
     x_coords = landmarks_to_plot[:, 0]
     y_coords = landmarks_to_plot[:, 1]
     z_coords = landmarks_to_plot[:, 2]
 
-    # Scatter plot
-    # Using fixed vmin/vmax for colormap as in your original script
     ax.scatter(x_coords, y_coords, z_coords, s=PLOT_POINT_SIZE, c=z_coords, cmap='viridis_r', vmin=0.3, vmax=1.0)
 
-    # Plot connections if defined
     if LANDMARK_CONNECTIONS:
         for p1_idx, p2_idx in LANDMARK_CONNECTIONS:
-            # Check if both landmarks exist and are valid (non-zero)
             if (0 <= p1_idx < MEDIAPIPE_LANDMARK_COUNT and
                 0 <= p2_idx < MEDIAPIPE_LANDMARK_COUNT and
                 valid_landmarks_mask[p1_idx] and
@@ -76,12 +65,11 @@ def plot_face_landmarks_3d(ax, landmarks_xyz, frame_id, sentence_id_str): # sent
     ax.set_zlabel("Z (meters - Depth)")
     ax.set_title(f"Sentence {sentence_id_str}, Frame {frame_id}")
 
-    # Set axis limits and view as per your original script
     ax.set_xlim([-0.2, 0.2])
     ax.set_ylim([-0.2, 0.2])
-    ax.set_zlim([0.3, 0.9]) # Original Z limits
-    ax.invert_zaxis() # Match Z-axis inversion
-    ax.view_init(elev=20, azim=0) # Match view
+    ax.set_zlim([0.3, 0.9])
+    ax.invert_zaxis()
+    ax.view_init(elev=20, azim=0)
 
 
 def main():
@@ -126,13 +114,6 @@ def main():
     total_frames_processed_from_csvs = 0
     total_frames_written_to_video = 0
 
-    # --- DEBUG: Option to process only a limited number of CSVs ---
-    # MAX_CSVS_TO_PROCESS = 1
-    # if MAX_CSVS_TO_PROCESS is not None:
-    #     print(f"DEBUG: Limiting processing to first {MAX_CSVS_TO_PROCESS} CSV file(s).")
-    #     csv_files_to_process = csv_files_to_process[:MAX_CSVS_TO_PROCESS]
-    # --- END DEBUG ---
-
     for csv_idx, csv_file_path in enumerate(csv_files_to_process):
         print(f"\n[{csv_idx + 1}/{len(csv_files_to_process)}] Processing CSV: {os.path.basename(csv_file_path)}...")
         try:
@@ -159,21 +140,12 @@ def main():
         num_unique_frames = len(grouped_frames)
         print(f"  Found {num_unique_frames} unique frames in this CSV.")
 
-        # --- DEBUG: Option to process only a limited number of frames per CSV ---
-        # MAX_FRAMES_PER_CSV = 50 # Set to None to process all
         frames_processed_this_csv = 0
-        # --- END DEBUG ---
 
         for frame_id, group in grouped_frames:
-            # if MAX_FRAMES_PER_CSV is not None and frames_processed_this_csv >= MAX_FRAMES_PER_CSV:
-            #     print(f"  DEBUG: Reached max frames ({MAX_FRAMES_PER_CSV}) for {os.path.basename(csv_file_path)}. Moving to next CSV.")
-            #     break
-            # frames_processed_this_csv += 1
-
             total_frames_processed_from_csvs += 1
-            # More frequent progress update
             if total_frames_processed_from_csvs % (
-                    FPS // 2) == 0 or total_frames_processed_from_csvs == 1:  # Approx every half second of video, or first frame
+                    FPS // 2) == 0 or total_frames_processed_from_csvs == 1:
                 print(
                     f"    Processing Frame ID {int(frame_id)} from {sentence_id_str} (Total CSV frames processed: {total_frames_processed_from_csvs})")
 
@@ -186,7 +158,7 @@ def main():
                     landmarks_xyz[lm_id_val, :] = present_coords[i, :]
 
             plot_face_landmarks_3d(ax, landmarks_xyz, int(frame_id), sentence_id_str)
-            fig.canvas.draw()  # This is often the slowest part per frame
+            fig.canvas.draw()
             buf = fig.canvas.buffer_rgba()
             image_from_plot_rgba = np.asarray(buf)
             image_from_plot_rgb = image_from_plot_rgba[:, :, :3]
@@ -194,7 +166,6 @@ def main():
             video_writer.write(image_bgr)
             total_frames_written_to_video += 1
 
-            # Original progress indicator
             if total_frames_written_to_video > 0 and total_frames_written_to_video % (FPS * 10) == 0:
                 print(
                     f"  LOG UPDATE: Total frames written to video: {total_frames_written_to_video} (Current file: {os.path.basename(csv_file_path)}, Frame ID: {frame_id})")

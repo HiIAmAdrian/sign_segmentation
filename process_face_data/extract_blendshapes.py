@@ -6,31 +6,24 @@ import os
 import time
 import datetime
 
-# MediaPipe imports
 BaseOptions = mp.tasks.BaseOptions
 FaceLandmarker = mp.tasks.vision.FaceLandmarker
 FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
-VisionRunningMode = mp.tasks.vision.RunningMode  # Corrected access
+VisionRunningMode = mp.tasks.vision.RunningMode
 
-# --- Configuration ---
-MODEL_PATH = 'model/face_landmarker_v2_with_blendshapes.task'  # IMPORTANT: Use a model that outputs blendshapes!
-
-
-# The regular face_landmarker.task might not.
-# Download 'face_landmarker_v2_with_blendshapes.task'
-# from MediaPipe's model card.
+MODEL_PATH = 'model/face_landmarker_v2_with_blendshapes.task'
 
 def create_blendshape_landmarker_options(model_path=MODEL_PATH):
     """Creates FaceLandmarkerOptions specifically for blendshape extraction."""
     options = FaceLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=model_path),
-        running_mode=VisionRunningMode.VIDEO,  # Process frame by frame from video
-        num_faces=1,  # Assuming you want blendshapes for the primary detected face
+        running_mode=VisionRunningMode.VIDEO,
+        num_faces=1,
         min_face_detection_confidence=0.5,
         min_face_presence_confidence=0.5,
         min_tracking_confidence=0.5,
-        output_face_blendshapes=True,  # CRITICAL: Enable blendshapes
-        output_facial_transformation_matrixes=False  # Keep false unless you need them
+        output_face_blendshapes=True,
+        output_facial_transformation_matrixes=False
     )
     return options
 
@@ -39,7 +32,7 @@ def process_bag_for_blendshapes(bag_filename, output_csv_dir, sentence_num, land
     print(
         f"Blendshapes: Processing sentence {sentence_num} from {bag_filename} (skipping first {trim_duration_sec:.2f}s)...")
 
-    csv_filename_base = f"sentence_{sentence_num:03d}_mediapipe_blendshapes.csv"  # Distinct filename
+    csv_filename_base = f"sentence_{sentence_num:03d}_mediapipe_blendshapes.csv"
     csv_filepath = os.path.join(output_csv_dir, csv_filename_base)
 
     pipeline = None
@@ -62,7 +55,7 @@ def process_bag_for_blendshapes(bag_filename, output_csv_dir, sentence_num, land
             total_duration_timedelta = playback.get_duration()
             total_duration_ns = int(total_duration_timedelta.total_seconds() * 1_000_000_000)
         except Exception:
-            total_duration_ns = -1  # Duration unknown
+            total_duration_ns = -1
 
         if trim_duration_sec > 0.001:
             seek_delta = datetime.timedelta(seconds=trim_duration_sec)
@@ -70,10 +63,6 @@ def process_bag_for_blendshapes(bag_filename, output_csv_dir, sentence_num, land
             playback.seek(seek_delta)
             time.sleep(0.2)
 
-        # We only need the color stream for MediaPipe input
-        # Alignment and depth are not strictly needed if only extracting blendshapes,
-        # but keeping align might be simpler if future features need it.
-        # For pure blendshapes, could skip align and depth processing.
         align_to = rs.stream.color
         align = rs.align(align_to)
 
@@ -85,14 +74,14 @@ def process_bag_for_blendshapes(bag_filename, output_csv_dir, sentence_num, land
             last_timestamp_ms = 0
             consecutive_no_frame_count = 0
             MAX_CONSECUTIVE_NO_FRAMES = 300
-            current_frame_id_for_csv = 0  # Keep a running frame ID for the CSV output
+            current_frame_id_for_csv = 0
 
             while True:
                 frames_tuple_or_set = None
                 try:
                     frames_tuple_or_set = pipeline.try_wait_for_frames(100)
                 except RuntimeError:
-                    pass  # Let logic below handle
+                    pass
 
                 actual_frameset = None
                 no_frame_received = False
@@ -123,12 +112,11 @@ def process_bag_for_blendshapes(bag_filename, output_csv_dir, sentence_num, land
 
                 consecutive_no_frame_count = 0
 
-                # Align frames to get color (depth not strictly needed for blendshapes only)
                 aligned_frames = align.process(actual_frameset)
                 color_frame_rs = aligned_frames.get_color_frame()
 
                 if not color_frame_rs:
-                    current_frame_id_for_csv += 1  # Still increment frame ID even if no color
+                    current_frame_id_for_csv += 1
                     continue
 
                 color_image_np = np.asanyarray(color_frame_rs.get_data())
@@ -142,7 +130,7 @@ def process_bag_for_blendshapes(bag_filename, output_csv_dir, sentence_num, land
                 else:
                     if color_image_np.ndim == 3 and color_image_np.shape[2] == 3:
                         rgb_image_np = cv2.cvtColor(color_image_np, cv2.COLOR_BGR2RGB)
-                    elif color_image_np.ndim == 2:  # Grayscale
+                    elif color_image_np.ndim == 2:
                         rgb_image_np = cv2.cvtColor(color_image_np, cv2.COLOR_GRAY2RGB)
                     else:
                         print(
@@ -150,7 +138,7 @@ def process_bag_for_blendshapes(bag_filename, output_csv_dir, sentence_num, land
                         current_frame_id_for_csv += 1
                         continue
 
-                if rgb_image_np is None:  # Should not happen if logic above is correct
+                if rgb_image_np is None:
                     current_frame_id_for_csv += 1
                     continue
 
@@ -164,7 +152,6 @@ def process_bag_for_blendshapes(bag_filename, output_csv_dir, sentence_num, land
                 try:
                     if landmarker_options.running_mode == VisionRunningMode.VIDEO:
                         face_landmarker_result = landmarker.detect_for_video(mp_image, timestamp_ms)
-                    # Add IMAGE mode if you plan to use it, but VIDEO is typical for bag files
                 except Exception as e_mp:
                     print(f"  Blendshapes Error: MediaPipe detection failed for {bag_filename}: {e_mp}")
                     current_frame_id_for_csv += 1
@@ -172,7 +159,6 @@ def process_bag_for_blendshapes(bag_filename, output_csv_dir, sentence_num, land
 
                 wrote_blendshapes_this_frame = False
                 if face_landmarker_result and face_landmarker_result.face_blendshapes:
-                    # Assuming one face detected, get its blendshapes
                     blendshapes_for_face = face_landmarker_result.face_blendshapes[0]
                     for blendshape_category in blendshapes_for_face:
                         blendshape_name = blendshape_category.category_name
@@ -181,12 +167,12 @@ def process_bag_for_blendshapes(bag_filename, output_csv_dir, sentence_num, land
                     wrote_blendshapes_this_frame = True
 
                 if wrote_blendshapes_this_frame:
-                    frames_with_blendshapes_written += 1  # Count frames where blendshapes were actually outputted
-                    if frames_with_blendshapes_written % 100 == 0 and frames_with_blendshapes_written > 0:  # Print progress less frequently
+                    frames_with_blendshapes_written += 1
+                    if frames_with_blendshapes_written % 100 == 0 and frames_with_blendshapes_written > 0:
                         print(
                             f"  Blendshapes: Processed {frames_with_blendshapes_written} frames with blendshapes for {bag_filename}...")
 
-                current_frame_id_for_csv += 1  # Increment for every frame iteration from BAG
+                current_frame_id_for_csv += 1
 
                 current_position_ns_after_proc = playback.get_position()
                 if total_duration_ns > 0 and current_position_ns_after_proc >= total_duration_ns - 10_000_000:
@@ -209,7 +195,6 @@ def process_bag_for_blendshapes(bag_filename, output_csv_dir, sentence_num, land
 
 
 if __name__ == "__main__":
-    # --- Ensure Model File Exists ---
     model_dir = os.path.dirname(MODEL_PATH)
     if model_dir and not os.path.exists(model_dir):
         os.makedirs(model_dir, exist_ok=True)
@@ -219,15 +204,13 @@ if __name__ == "__main__":
         print(f"and place it at: {os.path.abspath(MODEL_PATH)}")
         exit()
 
-    # --- Configuration for your files ---
-    bag_files_directory = r"D:\SegmentationThesis\output_realsense60fps+tesla Marinela"  # YOUR BAG FILE DIRECTORY
-    output_blendshapes_csv_directory = "./output_blendshapes_csv_marinela"  # Separate directory for blendshape CSVs
+    bag_files_directory = r"D:\SegmentationThesis\output_realsense60fps+tesla p2"
+    output_blendshapes_csv_directory = "./output_blendshapes_csv_p2"
 
     start_sentence_id = 1
-    max_sentences_to_check = 100  # Or however many sentences/BAGs you have
-    trim_start_seconds = 0.3  # Same trim as your other script, if desired
+    max_sentences_to_check = 100
+    trim_start_seconds = 0.3
 
-    # --- Setup Directories ---
     if not os.path.exists(bag_files_directory):
         print(f"Error: BAG files directory not found: {os.path.abspath(bag_files_directory)}")
         exit()
@@ -235,10 +218,8 @@ if __name__ == "__main__":
         os.makedirs(output_blendshapes_csv_directory, exist_ok=True)
         print(f"Created output blendshapes CSV directory: {os.path.abspath(output_blendshapes_csv_directory)}")
 
-    # --- Create Landmarker Options ---
     landmarker_opts_for_blendshapes = create_blendshape_landmarker_options()
 
-    # --- Find BAG Files ---
     bag_files_to_process_list = []
     print(f"Looking for BAG files in: {os.path.abspath(bag_files_directory)}")
     try:
@@ -257,7 +238,6 @@ if __name__ == "__main__":
     if not bag_files_to_process_list:
         print(f"No BAG files found matching the pattern in {os.path.abspath(bag_files_directory)}")
 
-    # --- Process Files ---
     for bag_path_val, s_num_val in bag_files_to_process_list:
         print(f"\nProcessing for Blendshapes: {bag_path_val} for sentence {s_num_val}")
         process_bag_for_blendshapes(bag_path_val, output_blendshapes_csv_directory,

@@ -44,30 +44,30 @@ def process_bag_file(bag_filename, output_csv_dir, sentence_num, landmarker_opti
         rs.config.enable_device_from_file(config, bag_filename, repeat_playback=False)
 
         profile = pipeline.start(config)
-        playback_device = profile.get_device()  # Get the device
+        playback_device = profile.get_device()
         if not playback_device.is_playback():
             print(f"  Python Error: Device from BAG file {bag_filename} is not a playback device.")
             return
-        playback = playback_device.as_playback()  # Cast to playback
+        playback = playback_device.as_playback()
         playback.set_real_time(False)
 
-        # Get total duration of the BAG file
+
         try:
-            # get_duration() returns a timedelta object. We need its total seconds or nanoseconds.
+
             total_duration_timedelta = playback.get_duration()
             total_duration_ns = int(total_duration_timedelta.total_seconds() * 1_000_000_000)
             print(f"  Python: BAG file total duration: {total_duration_timedelta} ({total_duration_ns / 1e9:.2f} s)")
         except Exception as e_dur:
             print(
                 f"  Python Warning: Could not get BAG file duration for {bag_filename}: {e_dur}. End detection might be less reliable.")
-            total_duration_ns = -1  # Indicate duration unknown
+            total_duration_ns = -1
 
         if trim_duration_sec > 0.001:
             seek_delta = datetime.timedelta(seconds=trim_duration_sec)
             print(f"  Python: Seeking playback to {trim_duration_sec:.2f} s (using timedelta: {seek_delta})...")
             playback.seek(seek_delta)
             print("  Python: Playback seek complete.")
-            time.sleep(0.2)  # Give it a moment to settle after seek
+            time.sleep(0.2)
 
         align_to = rs.stream.color
         align = rs.align(align_to)
@@ -100,14 +100,14 @@ def process_bag_file(bag_filename, output_csv_dir, sentence_num, landmarker_opti
 
             last_timestamp_ms = 0
             consecutive_no_frame_count = 0
-            MAX_CONSECUTIVE_NO_FRAMES = 300  # Number of timeouts before assuming end
+            MAX_CONSECUTIVE_NO_FRAMES = 300
 
             while True:
                 frames_tuple_or_set = None
                 try:
                     frames_tuple_or_set = pipeline.try_wait_for_frames(100)
                 except RuntimeError as e:
-                    # This catch might be too broad if try_wait_for_frames doesn't raise on simple timeout
+
                     print(f"  Python: RealSense runtime error during try_wait_for_frames for {bag_filename}: {e}")
                     break
 
@@ -127,10 +127,10 @@ def process_bag_file(bag_filename, output_csv_dir, sentence_num, landmarker_opti
 
                 if no_frame_received:
                     consecutive_no_frame_count += 1
-                    current_position_ns = playback.get_position()  # Get current position in nanoseconds
+                    current_position_ns = playback.get_position()
 
-                    # Check if near or at the end based on duration
-                    if total_duration_ns > 0 and current_position_ns >= total_duration_ns - 100_000_000:  # Within 0.1s of end
+
+                    if total_duration_ns > 0 and current_position_ns >= total_duration_ns - 100_000_000:
                         print(
                             f"  Python: Playback position ({current_position_ns / 1e9:.2f}s) reached or exceeded duration ({total_duration_ns / 1e9:.2f}s). Exiting loop for {bag_filename}.")
                         break
@@ -215,9 +215,9 @@ def process_bag_file(bag_filename, output_csv_dir, sentence_num, landmarker_opti
                         if frames_processed_for_csv > 0 and frames_processed_for_csv % 30 == 0:
                             print(f"  Python Processed {frames_processed_for_csv} frames for CSV for {bag_filename}...")
 
-                # Check end of file after processing a frame too
+
                 current_position_ns_after_proc = playback.get_position()
-                if total_duration_ns > 0 and current_position_ns_after_proc >= total_duration_ns - 10_000_000:  # very close to end (10ms)
+                if total_duration_ns > 0 and current_position_ns_after_proc >= total_duration_ns - 10_000_000:
                     print(
                         f"  Python: Playback position ({current_position_ns_after_proc / 1e9:.2f}s) near/at duration ({total_duration_ns / 1e9:.2f}s) after processing. Exiting loop for {bag_filename}.")
                     break
@@ -248,10 +248,10 @@ if __name__ == "__main__":
         print(f"Please download 'face_landmarker.task' and place it at: {os.path.abspath(MODEL_PATH)}")
         exit()
 
-    bag_files_directory = r"D:\SegmentationThesis\output_realsense60fps+tesla Marinela"
-    output_csv_directory = "./output_landmarks_csv_marinela"
-    start_sentence_id = 1
-    max_sentences_to_check = 100  # Check for up to 100 sentences
+    bag_files_directory = r"C:\Users\adrian.stan\Desktop\School\segmentation\process_face_data\test"
+    output_csv_directory = "./output_landmarks_csv"
+    start_sentence_id = 77
+    max_sentences_to_check = 2
     trim_start_seconds = 0.3
 
     if not os.path.exists(bag_files_directory):

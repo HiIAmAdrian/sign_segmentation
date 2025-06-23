@@ -1,4 +1,3 @@
-
 import Dexie from 'dexie';
 
 export interface User {
@@ -24,7 +23,7 @@ class AppDatabase extends Dexie {
     if (userCount === 0) {
       await this.users.add({
         username: 'demo',
-        password: 'password', // In a real app, use hashed passwords
+        password: 'password',
       });
     }
   }

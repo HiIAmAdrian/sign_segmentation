@@ -1,25 +1,24 @@
-#include "teslasuit_handler.h" // Public interface declarations
+#include "teslasuit_handler.h"
 #include <ts_api/ts_core_api.h>
 #include <ts_api/ts_device_api.h>
 #include <ts_api/ts_mocap_api.h>
-// ts_types.h is included via teslasuit_handler.h
 
 #include <stdio.h>
-#include <stdlib.h> // For exit (if check_ts_error_internal decides to exit)
-#include <string.h> // For sprintf
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #ifdef _WIN32
-#include <windows.h> // For CRITICAL_SECTION, Sleep, InitializeCriticalSection, DeleteCriticalSection
+#include <windows.h>
 #else
 #include <pthread.h>
-#include <unistd.h> // For usleep
+#include <unistd.h>
 #define Sleep(x) usleep(x*1000)
 #endif
 
-#define MAX_TS_DEVICES_INTERNAL 5 // Max devices to check during discovery
-#define MAX_FILENAME_LEN_TS 256   // Buffer for CSV filenames
+#define MAX_TS_DEVICES_INTERNAL 5
+#define MAX_FILENAME_LEN_TS 256
 
-// --- Static Global Variables for Teslasuit State (internal to this .c file) ---
+
 static TsDeviceHandle* s_ts_suit_handle = NULL;
 static TsDeviceHandle* s_ts_glove_left_handle = NULL;
 static TsDeviceHandle* s_ts_glove_right_handle = NULL;
@@ -28,7 +27,7 @@ static FILE* s_ts_suit_csv_file = NULL;
 static FILE* s_ts_glove_left_csv_file = NULL;
 static FILE* s_ts_glove_right_csv_file = NULL;
 
-// Volatile because they can be accessed by main thread and callback threads
+
 static volatile int s_current_ts_sentence_id = 0;
 static volatile uint64_t s_ts_mocap_frame_suit = 0;
 static volatile uint64_t s_ts_mocap_frame_glove_l = 0;
@@ -40,8 +39,8 @@ static CRITICAL_SECTION s_ts_glove_l_csv_mutex;
 static CRITICAL_SECTION s_ts_glove_r_csv_mutex;
 static LARGE_INTEGER qpc_frequency;
 static BOOL qpc_init_done = FALSE;
-static void initialize_qpc_ts_handler() { // Renamed to be specific
-    if (!qpc_init_done) { // Use the static qpc_init_done
+static void initialize_qpc_ts_handler() {
+    if (!qpc_init_done) {
         if (!QueryPerformanceFrequency(&qpc_frequency)) {
             qpc_frequency.QuadPart = 0;
             fprintf(stderr, "Warning: QueryPerformanceFrequency failed. Timestamps might be less precise.\n");
@@ -54,7 +53,6 @@ static pthread_mutex_t s_ts_suit_csv_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t s_ts_glove_l_csv_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t s_ts_glove_r_csv_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
-// --- End Static Global Variables ---
 
 
 
@@ -62,25 +60,23 @@ static pthread_mutex_t s_ts_glove_r_csv_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static uint64_t get_system_timestamp_us() {
     if (!qpc_init_done) {
-        initialize_qpc_ts_handler(); // Ensure it's initialized
+        initialize_qpc_ts_handler();
     }
 
     LARGE_INTEGER current_count;
-    if (!QueryPerformanceCounter(&current_count)) {
-        // Fallback if QPC fails after init (highly unlikely)
+    if (!QueryPerformanceCounter(¤t_count)) {
         FILETIME ft;
         ULARGE_INTEGER uli;
         GetSystemTimeAsFileTime(&ft);
         uli.LowPart = ft.dwLowDateTime;
         uli.HighPart = ft.dwHighDateTime;
-        return uli.QuadPart / 10; // Convert 100ns intervals to microseconds
+        return uli.QuadPart / 10;
     }
 
-    if (qpc_frequency.QuadPart == 0) { // If frequency could not be obtained
-        return 0; // Or another error indicator
+    if (qpc_frequency.QuadPart == 0) {
+        return 0;
     }
 
-    // Calculate seconds and fractional seconds separately to avoid overflow
     uint64_t seconds = current_count.QuadPart / qpc_frequency.QuadPart;
     uint64_t remainder_counts = current_count.QuadPart % qpc_frequency.QuadPart;
     uint64_t microseconds_part = (remainder_counts * 1000000ULL) / qpc_frequency.QuadPart;
@@ -100,7 +96,7 @@ static const char* ts_bone_index_to_name_str(TsBoneIndex index) {
         case TsBoneIndex_RightFoot: return "right_foot";
         case TsBoneIndex_Spine: return "spine";
         case TsBoneIndex_Chest: return "chest";
-        case TsBoneIndex_UpperSpine: return "upper_spine"; // Corrected from "UpperSpine"
+        case TsBoneIndex_UpperSpine: return "upper_spine";
         case TsBoneIndex_Neck: return "neck";
         case TsBoneIndex_Head: return "head";
         case TsBoneIndex_LeftShoulder: return "left_shoulder";
@@ -170,7 +166,6 @@ static const char* ts_biomech_index_to_name_str(TsBiomechanicalIndex index) {
         case TsBiomechanicalIndex_ForearmProSupL: return "ForearmProSupL";
         case TsBiomechanicalIndex_WristFlexExtL: return "WristFlexExtL";
         case TsBiomechanicalIndex_WristDeviationL: return "WristDeviationL";
-        // Note: Missing Lumbar, Thorax, Scapula from your example, add if API supports them
         case TsBiomechanicalIndex_ShoulderAddAbdR: return "ShoulderAddAbdR";
         case TsBiomechanicalIndex_ShoulderRotR: return "ShoulderRotR";
         case TsBiomechanicalIndex_ShoulderFlexExtR: return "ShoulderFlexExtR";
@@ -181,9 +176,9 @@ static const char* ts_biomech_index_to_name_str(TsBiomechanicalIndex index) {
     }
 }
 
-// Define the order of bones for the CSV output
+
 static const TsBoneIndex suit_bone_order[] = {
-    TsBoneIndex_Hips, // Often considered "root"
+    TsBoneIndex_Hips,
     TsBoneIndex_LeftUpperLeg, TsBoneIndex_RightUpperLeg,
     TsBoneIndex_LeftLowerLeg, TsBoneIndex_RightLowerLeg,
     TsBoneIndex_LeftFoot, TsBoneIndex_RightFoot,
@@ -206,7 +201,6 @@ static const TsBoneIndex left_glove_bone_order[] = {
 static const int num_left_glove_bones_to_log = sizeof(left_glove_bone_order) / sizeof(left_glove_bone_order[0]);
 
 static const TsBoneIndex right_glove_bone_order[] = {
-    // TsBoneIndex_Hips, // No need for Hips in glove-only file unless you want it for context
     TsBoneIndex_RightHand, TsBoneIndex_RightThumbProximal, TsBoneIndex_RightThumbIntermediate, TsBoneIndex_RightThumbDistal,
     TsBoneIndex_RightIndexProximal, TsBoneIndex_RightIndexIntermediate, TsBoneIndex_RightIndexDistal,
     TsBoneIndex_RightMiddleProximal, TsBoneIndex_RightMiddleIntermediate, TsBoneIndex_RightMiddleDistal,
@@ -222,27 +216,21 @@ static const TsBiomechanicalIndex biomech_indices_to_log[] = {
     TsBiomechanicalIndex_KneeFlexExtL, TsBiomechanicalIndex_AnkleFlexExtL, TsBiomechanicalIndex_AnkleProSupL,
     TsBiomechanicalIndex_ElbowFlexExtR, TsBiomechanicalIndex_ForearmProSupR, TsBiomechanicalIndex_WristFlexExtR, TsBiomechanicalIndex_WristDeviationR,
     TsBiomechanicalIndex_ElbowFlexExtL, TsBiomechanicalIndex_ForearmProSupL, TsBiomechanicalIndex_WristFlexExtL, TsBiomechanicalIndex_WristDeviationL,
-    // Lumbar, Thorax, Scapula are missing from your enum but in CSV example - will skip for now as they are not in TsBiomechanicalIndex
     TsBiomechanicalIndex_ShoulderAddAbdR, TsBiomechanicalIndex_ShoulderRotR, TsBiomechanicalIndex_ShoulderFlexExtR,
     TsBiomechanicalIndex_ShoulderAddAbdL, TsBiomechanicalIndex_ShoulderRotL, TsBiomechanicalIndex_ShoulderFlexExtL
 };
 static const int num_biomech_indices_to_log = sizeof(biomech_indices_to_log) / sizeof(biomech_indices_to_log[0]);
-// --- Internal Teslasuit Status Code Check ---
+
 static void check_ts_error_internal(TsStatusCode status_code, const char* context_msg) {
-    if (status_code != 0) { // 0 (Good) is success for Teslasuit
+    if (status_code != 0) {
         fprintf(stderr, "-----Teslasuit API Error in %s: %s (Code: %d)\n",
                 context_msg,
                 ts_get_status_code_message(status_code),
                 status_code);
-        // For critical errors during initialization or device opening, exiting might be appropriate.
-        // For errors during streaming, a warning might be better to allow graceful shutdown.
-        // Example: if (status_code < 0 && (strstr(context_msg, "ts_initialize") || strstr(context_msg, "ts_device_open"))) {
-        //     exit(EXIT_FAILURE);
-        // }
     }
 }
 
-// Public version if needed by other files (though main.c can just check return values)
+
 void check_ts_error_public(TsStatusCode status_code, const char* context_msg) {
     check_ts_error_internal(status_code, context_msg);
 }
@@ -253,27 +241,21 @@ bool ts_calibrate_device(TsDeviceHandle* device_handle, const char* device_name_
         return false;
     }
 
-    // The API docs say mocap streaming should be active.
-    // We assume the main loop will manage starting streaming if needed,
-    // or this is called when streaming is already active.
-    // A more robust way would be to check if streaming is active and start it if not,
-    // but that adds complexity here. For now, let's assume the user starts streaming first.
+
     printf("Attempting to calibrate %s...\n", device_name_for_log);
     printf("Ensure user is in the required calibration pose (e.g., I-Pose).\n");
 
-    // Add a small delay or prompt for user to get into pose
+
     printf("Calibration will start in 3 seconds...\n");
     Sleep(1000); printf("2...\n"); Sleep(1000); printf("1...\n"); Sleep(1000);
     printf("Calibrating %s NOW!\n", device_name_for_log);
 
 
     TsStatusCode status = ts_mocap_skeleton_calibrate(device_handle);
-    check_ts_error_internal(status, device_name_for_log); // check_ts_error_internal won't exit on non-fatal
+    check_ts_error_internal(status, device_name_for_log);
 
-    if (status == 0) { // Good
+    if (status == 0) {
         printf("%s calibration command sent successfully.\n", device_name_for_log);
-        // Note: Calibration might take some time on the device.
-        // The API call might just trigger it.
         return true;
     } else {
         fprintf(stderr, "Failed to send calibration command for %s.\n", device_name_for_log);
@@ -286,12 +268,6 @@ bool ts_calibrate_suit() {
         printf("Suit not available for calibration.\n");
         return false;
     }
-    // Important: Ensure Mocap is streaming for the suit *before* calling this
-    // if the API truly requires it. The current program starts streaming
-    // only when "recording" a sentence. Calibration might need to happen
-    // during a recording session, or we might need a separate "calibration mode"
-    // where streaming is started just for calibration.
-    // For simplicity, let's assume it's called while a recording is active.
     printf("Ensure Teslasuit Suit Mocap is streaming to calibrate.\n");
     return ts_calibrate_device(s_ts_suit_handle, "Teslasuit Suit");
 }
@@ -315,7 +291,7 @@ bool ts_calibrate_glove_right() {
 }
 
 
-// --- Teslasuit Mocap Callback Functions (Static) ---
+
 static void ts_mocap_suit_callback_internal(TsDeviceHandle* dev, TsMocapSkeleton skeleton, void* user_data) {
     (void)dev; (void)user_data;
     if (!s_ts_suit_csv_file) return;
@@ -409,7 +385,7 @@ static void ts_mocap_glove_right_callback_internal(TsDeviceHandle* dev, TsMocapS
 bool ts_initialize_system() {
     printf("Initializing Teslasuit API...\n");
 #ifdef _WIN32
-    initialize_qpc_ts_handler(); // Initialize QPC for Windows timestamps
+    initialize_qpc_ts_handler();
 #endif
     TsStatusCode ts_status = ts_initialize();
     check_ts_error_internal(ts_status, "ts_initialize");
@@ -427,8 +403,8 @@ bool ts_initialize_system() {
 
 void ts_discover_and_open_devices() {
     TsDevice devices[MAX_TS_DEVICES_INTERNAL];
-    uint32_t device_count = MAX_TS_DEVICES_INTERNAL; // Input: size of buffer
-    TsStatusCode ts_status = ts_get_device_list(devices, &device_count); // Output: actual number of devices
+    uint32_t device_count = MAX_TS_DEVICES_INTERNAL;
+    TsStatusCode ts_status = ts_get_device_list(devices, &device_count);
     check_ts_error_internal(ts_status, "ts_get_device_list");
     if (ts_status != 0) return;
 
@@ -494,7 +470,6 @@ void ts_uninitialize_system() {
     DeleteCriticalSection(&s_ts_glove_l_csv_mutex);
     DeleteCriticalSection(&s_ts_glove_r_csv_mutex);
 #else
-    // For PTHREAD_MUTEX_INITIALIZER, destroy is often not strictly needed
     pthread_mutex_destroy(&s_ts_suit_csv_mutex);
     pthread_mutex_destroy(&s_ts_glove_l_csv_mutex);
     pthread_mutex_destroy(&s_ts_glove_r_csv_mutex);

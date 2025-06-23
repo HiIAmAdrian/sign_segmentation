@@ -43,12 +43,9 @@ void signal_handler(int dummy) { (void)dummy; app_should_run = 0; printf("\nCtrl
 
 void check_rs_error(rs2_error* e, const char* context_msg) {
     if (e) {
-        // Simplified error print for this recorder
         fprintf(stderr, "\n%s: RealSense error: %s\n",
                 context_msg, rs2_get_error_message(e));
         rs2_free_error(e);
-        // Decide if exit is appropriate here or if main loop should handle
-        // For now, let main loop handle recording state based on function returns
     }
 }
 
@@ -56,7 +53,6 @@ void delete_file_if_exists(const char* filename) {
     if (remove(filename) == 0) {
         printf("  INFO: Deleted previous file: %s\n", filename);
     } else {
-        // printf("  INFO: File %s not found or could not be deleted.\n", filename);
     }
 }
 
@@ -126,7 +122,7 @@ int main(int argc, char* argv[]) {
                     if(rs_rec_pipeline) { rs2_pipeline_stop(rs_rec_pipeline, NULL); rs2_delete_pipeline(rs_rec_pipeline); rs_rec_pipeline = NULL; }
                     if(rs_rec_config) { rs2_delete_config(rs_rec_config); rs_rec_config = NULL; }
                     ts_stop_mocap_recording();
-                    is_recording = false; // Force stop
+                    is_recording = false;
                 }
             }
         } else {
@@ -142,7 +138,6 @@ int main(int argc, char* argv[]) {
                 app_should_run = 0; printf("Quit command received.\n"); break;
             } else if (key == '\r' || key == '\n') {
                 if (!is_recording) {
-                    // --- Start ALL Recordings ---
                     printf("Starting ALL recordings for sentence %03d...\n", sentence_count);
 
                     bool ts_started_ok = ts_start_mocap_recording(sentence_count, output_dir_base);
@@ -187,7 +182,7 @@ int main(int argc, char* argv[]) {
                          is_recording = true;
                     }
 
-                } else { // Stop ALL recordings
+                } else {
                     printf("Stopping ALL recordings for sentence %03d...\n", sentence_count);
                     is_recording = false;
 
@@ -207,7 +202,7 @@ int main(int argc, char* argv[]) {
                         rs_rec_pipeline = NULL;
                     }
 
-                    if (rs_rec_config) { // rs_rec_config is deleted after this block
+                    if (rs_rec_config) {
                         rs2_delete_config(rs_rec_config); rs_rec_config = NULL;
                         printf("  INFO: RealSense bag file for sentence %03d saved. Post-processing is separate.\n", sentence_count);
                     } else {
@@ -226,7 +221,6 @@ int main(int argc, char* argv[]) {
                     char ts_rglove_file[MAX_FILENAME_LEN];
                     char rs_bag_prev[MAX_FILENAME_LEN];
 
-                    // Corrected and safer filename construction
                     sprintf(ts_suit_file, "%s/sentence_%03d_ts_suit_mocap.csv", output_dir_base, prev_sentence_to_delete);
                     sprintf(ts_lglove_file, "%s/sentence_%03d_ts_glove_L_mocap.csv", output_dir_base, prev_sentence_to_delete);
                     sprintf(ts_rglove_file, "%s/sentence_%03d_ts_glove_R_mocap.csv", output_dir_base, prev_sentence_to_delete);
@@ -245,9 +239,9 @@ int main(int argc, char* argv[]) {
                 } else {
                     printf("\n-------------Cannot re-record. No previous sentence recorded in this session or at start_sentence_num.\n");
                 }
-            } else if (!is_recording) { // Teslasuit Calibration keys
+            } else if (!is_recording) {
                 if (key == 's' || key == 'S') { printf("\nAttempting SUIT calibration...\n"); ts_calibrate_suit(); }
-                else if (key== 'g' || key == 'G') { // New key for both gloves
+                else if (key== 'g' || key == 'G') {
                     printf("\nAttempting BOTH GLOVES calibration...\n");
                     bool left_ok = ts_calibrate_glove_left();
                     bool right_ok = ts_calibrate_glove_right();
