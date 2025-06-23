@@ -1,0 +1,19 @@
+gcc -c teslasuit_handler.c -o teslasuit_handler.o \
+    -I"/d/Teslasuit/Studio/include" \
+    -Wall -O2 -g
+
+gcc -c merged_recorder.c -o merged_recorder.o \
+    -I"/d/Intel RealSense SDK 2.0/include" \
+    -I"/d/Teslasuit/Studio/include" \
+    -I"." \
+    -Wall -O2 -g
+
+g++ merged_recorder.o teslasuit_handler.o -o combined_recorder.exe \
+    -L"/d/Intel RealSense SDK 2.0/lib/x64" \
+    -L"/d/Teslasuit/Studio" \
+    -lrealsense2 \
+    "/d/Teslasuit/Studio/teslasuit_api.dll" \
+    -lws2_32 \
+    -lstdc++ \
+    -lpthread \
+    -g

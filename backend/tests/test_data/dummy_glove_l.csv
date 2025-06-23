@@ -1,0 +1,4 @@
+frame_timestamp_us,left_hand.position.x,left_thumb_proximal.rotation.w
+950000,0.4,0.8
+2000000,0.45,0.81
+3100000,0.5,0.82
